@@ -3598,11 +3598,19 @@ document.getElementById("navMkt").onclick = () => setView("mkt");
    ========================================================= */
 
 const PRIORITIES_KEY = "priorities-v1";
-const PEOPLE = [
+const PEOPLE_KEY = "priority-people-v1";
+const DEFAULT_PEOPLE = [
   { id: "amanda",  label: "Amanda" },
   { id: "arthur",  label: "Arthur" },
   { id: "eduarda", label: "Eduarda" }
 ];
+function loadPeople() {
+  const s = storageGet(PEOPLE_KEY, null);
+  if (Array.isArray(s) && s.length && s.every(p => p && p.id && p.label)) return s;
+  return DEFAULT_PEOPLE.slice();
+}
+function savePeople() { storageSet(PEOPLE_KEY, PEOPLE); }
+let PEOPLE = loadPeople();
 const DAYS = [
   { key: "segunda", label: "Segunda-feira" },
   { key: "terca",   label: "Terça-feira" },
@@ -3672,6 +3680,28 @@ function renderPriorityTabs() {
     b.onclick = () => { activePerson = p.id; renderPriorityTabs(); renderPriorities(); };
     tabs.appendChild(b);
   });
+  const addBtn = document.createElement("button");
+  addBtn.textContent = "+ Nova aba";
+  addBtn.title = "Criar uma nova aba de prioridades";
+  addBtn.onclick = createNewPersonTab;
+  tabs.appendChild(addBtn);
+}
+
+function createNewPersonTab() {
+  const name = (prompt("Nome da nova aba:") || "").trim();
+  if (!name) return;
+  const baseId = name.toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "aba";
+  let id = baseId, n = 2;
+  while (PEOPLE.some(p => p.id === id)) id = `${baseId}-${n++}`;
+  PEOPLE.push({ id, label: name });
+  priorities[id] = emptyPersonPriorities();
+  savePeople();
+  savePriorities();
+  activePerson = id;
+  renderPriorityTabs();
+  renderPriorities();
 }
 
 function renderPriorities() {
