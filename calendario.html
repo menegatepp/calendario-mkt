@@ -238,6 +238,21 @@
     border-radius: 50%;
     flex: none;
   }
+  .event-done-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px; height: 14px;
+    background: #2ecc71;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1;
+    flex: none;
+    margin-right: 4px;
+  }
+  .event-row .title .event-done-check { margin-right: 6px; vertical-align: middle; }
 
   /* inputs */
   select, input[type=date], input[type=text], textarea {
@@ -2741,6 +2756,13 @@ function render() {
         dot.title = stObj.label;
         head.appendChild(dot);
       }
+      if (isTaskPriorityCompleted(ev)) {
+        const check = document.createElement("span");
+        check.className = "event-done-check";
+        check.textContent = "✓";
+        check.title = "Finalizada nas prioridades";
+        head.appendChild(check);
+      }
       if (ev.photo) {
         const t = document.createElement("span");
         t.className = "thumb";
@@ -2825,7 +2847,14 @@ function renderDayEvents() {
     info.className = "info";
     const t = document.createElement("div");
     t.className = "title";
-    t.textContent = ev.title || "(sem título)";
+    if (isTaskPriorityCompleted(ev)) {
+      const check = document.createElement("span");
+      check.className = "event-done-check";
+      check.textContent = "✓";
+      check.title = "Finalizada nas prioridades";
+      t.appendChild(check);
+    }
+    t.appendChild(document.createTextNode(ev.title || "(sem título)"));
     const meta = document.createElement("div");
     meta.className = "meta";
     const stObj = STATUSES.find(s => s.id === ev.status);
@@ -3139,6 +3168,31 @@ function findPriorityById(priorityId) {
   return null;
 }
 
+function isPriorityArchived(personId, priorityId) {
+  if (!priorityId) return false;
+  const list = deletedPriorities[personId] || [];
+  return list.some(d => d.id === priorityId);
+}
+
+function isTaskPriorityCompleted(ev) {
+  if (!ev || !ev.priorityIds) return false;
+  const team = PEOPLE.map(p => p.label);
+  const resps = (getResponsibles(ev) || []).filter(r => team.includes(r));
+  if (!resps.length) return false;
+  for (const r of resps) {
+    const pid = personIdFromLabel(r);
+    const priorityId = ev.priorityIds[pid];
+    if (!priorityId) return false;
+    const found = findPriorityById(priorityId);
+    if (found) {
+      if (!found.list[found.idx].done) return false;
+    } else if (!isPriorityArchived(pid, priorityId)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function findTaskByPriorityId(priorityId) {
   for (const dayKey in events) {
     const list = events[dayKey];
@@ -3208,6 +3262,11 @@ function syncTaskPriority(ev) {
         newList.push(item);
       }
     } else {
+      // Se o priorityId referido está no histórico (arquivado), o usuário
+      // já finalizou — NÃO recria a prioridade.
+      if (current[personId] && isPriorityArchived(personId, current[personId])) {
+        continue;
+      }
       const newList = priorities[personId][targetDay] = priorities[personId][targetDay] || [];
       const newId = uid();
       newList.push({
@@ -4104,7 +4163,53 @@ function createNewPersonTab() {
   renderResponsibleChips();
 }
 
+function dedupePriorities() {
+  // IDs referenciados por algum event.priorityIds — preferimos manter esses (são os "linked").
+  const linkedIds = new Set();
+  for (const dayKey in events) {
+    const list = events[dayKey];
+    if (!Array.isArray(list)) continue;
+    for (const ev of list) {
+      if (ev.priorityIds) {
+        for (const pid in ev.priorityIds) linkedIds.add(ev.priorityIds[pid]);
+      }
+    }
+  }
+
+  let changed = false;
+  for (const personId in priorities) {
+    const personData = priorities[personId];
+    if (!personData || typeof personData !== "object") continue;
+    for (const dayKey in personData) {
+      const list = personData[dayKey];
+      if (!Array.isArray(list)) continue;
+      const seen = new Map();
+      const keep = [];
+      for (const item of list) {
+        const key = (item.text || "").trim().toLowerCase();
+        if (!key) { keep.push(item); continue; }
+        const existing = seen.get(key);
+        if (!existing) {
+          seen.set(key, item);
+          keep.push(item);
+        } else {
+          // Prefere a linked. Se a atual é linked e a anterior não, substitui.
+          if (linkedIds.has(item.id) && !linkedIds.has(existing.id)) {
+            const idx = keep.indexOf(existing);
+            if (idx >= 0) keep[idx] = item;
+            seen.set(key, item);
+          }
+          changed = true;
+        }
+      }
+      if (keep.length !== list.length) personData[dayKey] = keep;
+    }
+  }
+  if (changed) savePriorities();
+}
+
 function renderPriorities() {
+  dedupePriorities();
   const personData = priorities[activePerson] = normalizePersonPriorities(priorities[activePerson]);
   const box = document.getElementById("prioritiesList");
   box.innerHTML = "";
