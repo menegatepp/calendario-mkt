@@ -308,6 +308,7 @@
     justify-content: center;
     z-index: 1000;
   }
+  #priorityDetailOverlay { z-index: 1200; }
   .overlay.show { display: flex; }
   body:has(.overlay.show) { overflow: hidden; }
   .modal {
@@ -378,6 +379,16 @@
   .subtask-item.done .subtask-text {
     text-decoration: line-through;
     opacity: 0.55;
+  }
+  .subtask-item .subtask-assign {
+    flex: none;
+    padding: 2px 4px;
+    font-size: 11px;
+    font-family: inherit;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    max-width: 110px;
   }
   .subtask-item .subtask-del {
     border: none;
@@ -2880,7 +2891,7 @@ function renderResponsibleChips() {
     b.textContent = p.label;
     b.className = "chip-" + p.id;
     if (active.has(p.label)) b.classList.add("active");
-    b.onclick = () => b.classList.toggle("active");
+    b.onclick = () => { b.classList.toggle("active"); renderFormSubtasks(); };
     box.appendChild(b);
   });
 }
@@ -2915,7 +2926,7 @@ function setFormResponsibles(list) {
 /* ---- Subtarefas (usado em fSubtasks e priorityDetailSubtasks) ---- */
 function subtaskUid() { return "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
 
-function buildSubtaskRow(st, onChange) {
+function buildSubtaskRow(st, onChange, responsibles) {
   const row = document.createElement("div");
   row.className = "subtask-item" + (st.done ? " done" : "");
 
@@ -2939,6 +2950,28 @@ function buildSubtaskRow(st, onChange) {
   });
   row.appendChild(txt);
 
+  if (Array.isArray(responsibles) && responsibles.length >= 2) {
+    const sel = document.createElement("select");
+    sel.className = "subtask-assign";
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "— quem?";
+    sel.appendChild(empty);
+    responsibles.forEach(r => {
+      const o = document.createElement("option");
+      o.value = r;
+      o.textContent = r;
+      sel.appendChild(o);
+    });
+    sel.value = responsibles.includes(st.responsible) ? st.responsible : "";
+    sel.onchange = () => {
+      st.responsible = sel.value || null;
+      onChange("assign", st);
+    };
+    sel.onclick = (e) => e.stopPropagation();
+    row.appendChild(sel);
+  }
+
   const del = document.createElement("button");
   del.type = "button";
   del.className = "subtask-del";
@@ -2950,7 +2983,7 @@ function buildSubtaskRow(st, onChange) {
   return row;
 }
 
-function renderSubtasksList(container, list, onChange) {
+function renderSubtasksList(container, list, onChange, responsibles) {
   container.innerHTML = "";
   if (!list.length) {
     const empty = document.createElement("div");
@@ -2959,19 +2992,20 @@ function renderSubtasksList(container, list, onChange) {
     container.appendChild(empty);
     return;
   }
-  list.forEach(st => container.appendChild(buildSubtaskRow(st, onChange)));
+  list.forEach(st => container.appendChild(buildSubtaskRow(st, onChange, responsibles)));
 }
 
 function renderFormSubtasks() {
   const box = document.getElementById("fSubtasks");
   if (!box) return;
+  const resps = getFormResponsibles();
   renderSubtasksList(box, currentSubtasks, (action, st) => {
     if (action === "remove") {
       const i = currentSubtasks.indexOf(st);
       if (i >= 0) currentSubtasks.splice(i, 1);
     }
     renderFormSubtasks();
-  });
+  }, resps);
 }
 function addFormSubtask() {
   const input = document.getElementById("fSubtaskInput");
@@ -3021,7 +3055,7 @@ function openEdit(ev) {
   else { prev.classList.remove("show"); prev.removeAttribute("src"); }
   document.getElementById("fPhoto").value = "";
   currentSubtasks = (ev && Array.isArray(ev.subtasks))
-    ? ev.subtasks.map(s => ({ id: s.id || subtaskUid(), text: s.text || "", done: !!s.done }))
+    ? ev.subtasks.map(s => ({ id: s.id || subtaskUid(), text: s.text || "", done: !!s.done, responsible: s.responsible || null }))
     : [];
   renderFormSubtasks();
   document.getElementById("fSubtaskInput").value = "";
@@ -3066,7 +3100,7 @@ function saveEdit(keepOpen) {
     finishDate,
     color: selectedColor,
     photo: currentPhoto,
-    subtasks: currentSubtasks.map(s => ({ id: s.id, text: s.text, done: !!s.done }))
+    subtasks: currentSubtasks.map(s => ({ id: s.id, text: s.text, done: !!s.done, responsible: s.responsible || null }))
   };
 
   let savedEv;
@@ -3158,7 +3192,7 @@ function syncTaskPriority(ev) {
     priorities[personId] = normalizePersonPriorities(priorities[personId]);
 
     const subtasksCopy = Array.isArray(ev.subtasks)
-      ? ev.subtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done }))
+      ? ev.subtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done, responsible: s.responsible || null }))
       : [];
     const existing = current[personId] ? findPriorityById(current[personId]) : null;
     if (existing) {
@@ -4265,23 +4299,31 @@ function buildPriorityItem(item, sourceList, personId, dayKey) {
 let priorityDetailEditing = null;   // ref pro item sendo editado
 let priorityDetailDraft = null;     // { description, photos[] } rascunho
 
-function openPriorityDetail(item) {
+function openPriorityDetail(item, opts) {
+  const fromTrash = !!(opts && opts.fromTrash);
   priorityDetailEditing = item;
   priorityDetailDraft = {
     text: item.text || "",
     description: item.description || "",
     photos: Array.isArray(item.photos) ? item.photos.slice() : [],
     subtasks: Array.isArray(item.subtasks)
-      ? item.subtasks.map(s => ({ id: s.id || subtaskUid(), text: s.text || "", done: !!s.done }))
-      : []
+      ? item.subtasks.map(s => ({ id: s.id || subtaskUid(), text: s.text || "", done: !!s.done, responsible: s.responsible || null }))
+      : [],
+    fromTrash
   };
-  document.getElementById("priorityDetailTitle").textContent = "Detalhes da prioridade";
+  document.getElementById("priorityDetailTitle").textContent = fromTrash
+    ? "Detalhes (excluída)"
+    : "Detalhes da prioridade";
   document.getElementById("priorityDetailText").value = priorityDetailDraft.text;
   document.getElementById("priorityDetailDesc").value = priorityDetailDraft.description;
   document.getElementById("priorityDetailFiles").value = "";
   document.getElementById("priorityDetailSubtaskInput").value = "";
   renderPriorityDetailPhotos();
   renderPriorityDetailSubtasks();
+  const saveBtn = document.getElementById("priorityDetailSaveBtn");
+  if (saveBtn) saveBtn.style.display = fromTrash ? "none" : "";
+  const cancelBtn = document.getElementById("priorityDetailCancelBtn");
+  if (cancelBtn) cancelBtn.textContent = fromTrash ? "Fechar" : "Cancelar";
   document.getElementById("priorityDetailOverlay").classList.add("show");
 }
 function closePriorityDetail() {
@@ -4352,13 +4394,18 @@ function savePriorityDetail() {
 function renderPriorityDetailSubtasks() {
   const box = document.getElementById("priorityDetailSubtasks");
   if (!box || !priorityDetailDraft) return;
+  let resps = [];
+  if (priorityDetailEditing) {
+    const linked = findTaskByPriorityId(priorityDetailEditing.id);
+    if (linked) resps = getResponsibles(linked.ev);
+  }
   renderSubtasksList(box, priorityDetailDraft.subtasks, (action, st) => {
     if (action === "remove") {
       const i = priorityDetailDraft.subtasks.indexOf(st);
       if (i >= 0) priorityDetailDraft.subtasks.splice(i, 1);
     }
     renderPriorityDetailSubtasks();
-  });
+  }, resps);
 }
 function addPriorityDetailSubtask() {
   if (!priorityDetailDraft) return;
@@ -5495,7 +5542,7 @@ function renderPriorityTrash() {
     row.className = "event-row clickable";
     row.style.cursor = "pointer";
     row.title = "Clique para ver detalhes";
-    row.onclick = () => openPriorityDetail(entry);
+    row.onclick = () => openPriorityDetail(entry, { fromTrash: true });
 
     const info = document.createElement("div");
     info.className = "info";
