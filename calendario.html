@@ -867,6 +867,31 @@
     box-shadow: 0 4px 16px rgba(0,0,0,0.08);
   }
   .small { font-size: 11px; }
+  .ger-apikey-row {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;
+  }
+  .ger-apikey-row input {
+    flex: 1; min-width: 240px;
+    padding: 8px 12px; border-radius: 10px;
+    border: 1px solid #e5e7eb; font-family: monospace; font-size: 12px;
+  }
+  .ger-mode-badge {
+    padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: #e5e7eb; color: #374151;
+  }
+  .ger-mode-badge.ai { background: var(--neon); color: var(--black); }
+  .ger-output { position: relative; }
+  .ger-loading {
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0.9);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: 14px; gap: 14px;
+  }
+  .ger-loading .spinner {
+    width: 42px; height: 42px; border: 4px solid #e5e7eb; border-top-color: var(--black);
+    border-radius: 50%; animation: ger-spin 0.9s linear infinite;
+  }
+  @keyframes ger-spin { to { transform: rotate(360deg); } }
 
   .sheet-toolbar {
     display: flex;
@@ -1824,7 +1849,14 @@
   <div class="sheet-card">
     <div class="sheet-toolbar">
       <h2>Gerador de post Instagram</h2>
+      <span class="ger-mode-badge" id="gerModeBadge">Modo: Local</span>
     </div>
+    <div class="ger-apikey-row">
+      <input type="password" id="gerApiKey" placeholder="Cole sua OpenAI API Key (sk-...) pra usar DALL-E 3" autocomplete="off" />
+      <button id="gerSaveKeyBtn">Salvar chave</button>
+      <button id="gerClearKeyBtn" class="danger">Apagar</button>
+    </div>
+    <p class="muted small" style="margin:0 0 12px 0">Com a API key, o gerador analisa o estilo das referências via GPT-4o e gera um post novo com DALL-E 3 (~$0.05/post). Sem chave, faz render local só com paleta.</p>
     <div class="ger-grid">
       <div class="ger-col">
         <label class="ger-label">Referências de design <span class="muted">(cores e layout)</span></label>
@@ -1864,6 +1896,10 @@
 
     <div class="ger-output" id="gerOutput">
       <canvas id="gerCanvas" width="1080" height="1080"></canvas>
+      <div class="ger-loading" id="gerLoading" style="display:none">
+        <div class="spinner"></div>
+        <p id="gerLoadingMsg">Gerando...</p>
+      </div>
     </div>
   </div>
 </div>
@@ -5646,14 +5682,60 @@ function restoreFromTrash(idx) {
 /* =========================================================
    GERADOR — compõe post Instagram a partir de refs + texto OCR
    ========================================================= */
+const GER_KEY_STORAGE = "openai-api-key-v1";
 const GER = {
   refs: [],          // { img: HTMLImageElement, dataUrl: string }
   srcDataUrl: null,
   palette: [],       // array of "#rrggbb"
   selectedBg: null,
   selectedFg: null,
-  tesseractLoaded: false
+  tesseractLoaded: false,
+  lastGeneratedUrl: null,
+  lastStyleDesc: ""
 };
+function gerGetKey() { try { return localStorage.getItem(GER_KEY_STORAGE) || ""; } catch { return ""; } }
+function gerSetKey(k) { try { localStorage.setItem(GER_KEY_STORAGE, k); } catch {} }
+function gerClearKey() { try { localStorage.removeItem(GER_KEY_STORAGE); } catch {} }
+function gerUpdateModeBadge() {
+  const b = gerQ("gerModeBadge");
+  if (!b) return;
+  const has = !!gerGetKey();
+  b.textContent = has ? "Modo: IA (OpenAI)" : "Modo: Local";
+  b.classList.toggle("ai", has);
+}
+function gerShowLoading(msg) {
+  gerQ("gerLoading").style.display = "flex";
+  gerQ("gerLoadingMsg").textContent = msg || "Gerando...";
+}
+function gerHideLoading() {
+  gerQ("gerLoading").style.display = "none";
+}
+function gerImgToCompressedBase64(img, maxSide, quality) {
+  const c = document.createElement("canvas");
+  let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  if (w > maxSide || h > maxSide) {
+    const r = maxSide / Math.max(w, h);
+    w = Math.round(w * r); h = Math.round(h * r);
+  }
+  c.width = w; c.height = h;
+  c.getContext("2d").drawImage(img, 0, 0, w, h);
+  return c.toDataURL("image/jpeg", quality || 0.82);
+}
+async function gerOpenAI(path, payload) {
+  const key = gerGetKey();
+  if (!key) throw new Error("API key da OpenAI não configurada.");
+  const res = await fetch("https://api.openai.com/v1" + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    let msg = "HTTP " + res.status;
+    try { const j = await res.json(); if (j.error && j.error.message) msg = j.error.message; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
 
 function gerQ(id) { return document.getElementById(id); }
 
@@ -5826,7 +5908,32 @@ async function gerRunOcr() {
   if (!GER.srcDataUrl) return;
   const status = gerQ("gerOcrStatus");
   status.style.display = "block";
-  status.textContent = "Carregando OCR…";
+
+  if (gerGetKey()) {
+    status.textContent = "Extraindo texto com GPT-4o…";
+    try {
+      const data = await gerOpenAI("/chat/completions", {
+        model: "gpt-4o",
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "Extraia TODO o texto visível nesta imagem exatamente como aparece. Preserve quebras de linha. Não adicione comentários, tradução ou explicação — retorne apenas o texto bruto." },
+            { type: "image_url", image_url: { url: GER.srcDataUrl } }
+          ]
+        }],
+        max_tokens: 800,
+        temperature: 0
+      });
+      const text = (data.choices?.[0]?.message?.content || "").trim();
+      gerQ("gerTextArea").value = text;
+      status.textContent = "Texto extraído com GPT-4o. Edite e clique em Gerar.";
+    } catch (err) {
+      status.textContent = "Erro no OCR (OpenAI): " + err.message;
+    }
+    return;
+  }
+
+  status.textContent = "Carregando OCR local (Tesseract)…";
   try {
     await gerLoadTesseract();
     status.textContent = "Extraindo texto… isso pode levar 10-30s.";
@@ -5834,7 +5941,7 @@ async function gerRunOcr() {
     const { data } = await worker.recognize(GER.srcDataUrl);
     await worker.terminate();
     gerQ("gerTextArea").value = (data.text || "").trim();
-    status.textContent = "Texto extraído. Edite livremente e clique em Gerar.";
+    status.textContent = "Texto extraído. Edite e clique em Gerar.";
   } catch (err) {
     status.textContent = "Erro no OCR: " + err.message;
   }
@@ -5861,26 +5968,23 @@ function gerWrapText(ctx, text, maxWidth) {
   return lines;
 }
 
-function gerRenderCanvas() {
+function gerRenderLocalCanvas() {
   const canvas = gerQ("gerCanvas");
+  canvas.width = 1080; canvas.height = 1080;
   const ctx = canvas.getContext("2d");
   const W = canvas.width, H = canvas.height;
 
   const bg = GER.selectedBg || "#111111";
   const fg = GER.selectedFg || "#ffffff";
-  const accent = GER.palette[1] || gerBestContrast(bg) === "#ffffff" ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
 
-  // fundo
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
 
-  // barra de acento lateral
   ctx.fillStyle = GER.palette[1] || fg;
   ctx.globalAlpha = 0.35;
   ctx.fillRect(0, 0, 24, H);
   ctx.globalAlpha = 1;
 
-  // mini paleta no canto inferior
   if (GER.palette.length) {
     const sw = 40, gap = 10, bottom = H - 50;
     GER.palette.slice(0, 5).forEach((c, i) => {
@@ -5889,17 +5993,14 @@ function gerRenderCanvas() {
     });
   }
 
-  // texto central
   const text = (gerQ("gerTextArea").value || "").trim() || "Seu texto aqui";
   const padding = 110;
   const maxWidth = W - padding * 2;
-
-  const baseSize = Math.max(36, Math.min(110, Math.floor(2200 / Math.max(12, text.length / 3))));
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
   ctx.fillStyle = fg;
 
-  let size = baseSize;
+  let size = Math.max(36, Math.min(110, Math.floor(2200 / Math.max(12, text.length / 3))));
   let lines = [];
   while (size > 28) {
     ctx.font = `700 ${size}px -apple-system, Segoe UI, Roboto, sans-serif`;
@@ -5908,7 +6009,6 @@ function gerRenderCanvas() {
     if (totalH <= H - padding * 2 - 110) break;
     size -= 4;
   }
-
   const lineH = size * 1.2;
   const totalH = lines.length * lineH;
   let y = (H - totalH) / 2 + lineH / 2;
@@ -5917,21 +6017,115 @@ function gerRenderCanvas() {
     y += lineH;
   }
 
+  GER.lastGeneratedUrl = null;
   gerQ("gerDownBtn").disabled = false;
 }
 
-function gerDownloadPng() {
+async function gerGenerateWithAI() {
+  const text = (gerQ("gerTextArea").value || "").trim();
+  if (!text) { alert("Adicione ou extraia o texto antes de gerar."); return; }
+
+  try {
+    if (GER.refs.length && !GER.lastStyleDesc) {
+      gerShowLoading("Analisando referências com GPT-4o…");
+      const content = [{
+        type: "text",
+        text: "Analise estas imagens de referência de posts do Instagram. Em INGLÊS, descreva em até 220 palavras o ESTILO VISUAL: paleta exata (com valores hex), tipografia (família provável, peso, estilo de fonte — serif, sans-serif, display, manuscrito, etc), composição/layout, elementos decorativos, formas, padrões geométricos, texturas, ícones, enquadramento, espaçamento e vibe geral (minimalista, vintage, moderno, editorial, etc). Seja muito específico e concreto. NÃO invente elementos que não apareçam nas imagens."
+      }];
+      for (const r of GER.refs.slice(0, 4)) {
+        const compressed = gerImgToCompressedBase64(r.img, 900, 0.82);
+        content.push({ type: "image_url", image_url: { url: compressed } });
+      }
+      const data = await gerOpenAI("/chat/completions", {
+        model: "gpt-4o",
+        messages: [{ role: "user", content }],
+        max_tokens: 500,
+        temperature: 0.2
+      });
+      GER.lastStyleDesc = (data.choices?.[0]?.message?.content || "").trim();
+    }
+
+    gerShowLoading("Gerando imagem com DALL-E 3 (30-60s)…");
+    const style = GER.lastStyleDesc || "clean minimalist Instagram post";
+    const safeText = text.replace(/"/g, "'").slice(0, 280);
+    const prompt = `A square Instagram post (1:1). Visual style: ${style}\n\nIntegrate this text prominently and clearly legible into the design, keeping the exact wording and spelling: "${safeText}". The typography and composition must match the style described above. No extra decorative text beyond what's specified.`;
+
+    const imgResp = await gerOpenAI("/images/generations", {
+      model: "dall-e-3",
+      prompt,
+      n: 1,
+      size: "1024x1024",
+      quality: "standard"
+    });
+    const imgUrl = imgResp.data?.[0]?.url;
+    if (!imgUrl) throw new Error("Sem URL no retorno");
+    GER.lastGeneratedUrl = imgUrl;
+
+    gerShowLoading("Carregando imagem…");
+    const res = await fetch(imgUrl);
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve; img.onerror = reject; img.src = objUrl;
+    });
+    const canvas = gerQ("gerCanvas");
+    canvas.width = 1024; canvas.height = 1024;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, 1024, 1024);
+    GER.lastBlobUrl = objUrl;
+    gerQ("gerDownBtn").disabled = false;
+    gerQ("gerOcrStatus").style.display = "block";
+    gerQ("gerOcrStatus").textContent = "Gerado com DALL-E 3. Se o texto saiu errado, edite e clique em Atualizar.";
+  } catch (err) {
+    alert("Erro: " + err.message);
+  } finally {
+    gerHideLoading();
+  }
+}
+
+function gerRenderCanvas() {
+  if (gerGetKey()) {
+    gerGenerateWithAI();
+  } else {
+    gerRenderLocalCanvas();
+  }
+}
+
+async function gerDownloadPng() {
+  if (GER.lastGeneratedUrl) {
+    try {
+      const res = await fetch(GER.lastGeneratedUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = "post-" + Date.now() + ".png";
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return;
+    } catch (err) {
+      console.warn("Falha no download via URL, tentando canvas:", err);
+    }
+  }
   const canvas = gerQ("gerCanvas");
-  const link = document.createElement("a");
-  link.download = "post-" + Date.now() + ".png";
-  link.href = canvas.toDataURL("image/png");
-  link.click();
+  try {
+    const link = document.createElement("a");
+    link.download = "post-" + Date.now() + ".png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  } catch (err) {
+    alert("Não foi possível baixar: " + err.message);
+  }
 }
 
 function gerReset() {
   if (!confirm("Limpar referências, imagem e texto?")) return;
   GER.refs = []; GER.srcDataUrl = null; GER.palette = [];
   GER.selectedBg = null; GER.selectedFg = null;
+  GER.lastGeneratedUrl = null; GER.lastStyleDesc = "";
   gerQ("gerRefsGrid").innerHTML = "";
   gerQ("gerPalette").style.display = "none";
   gerQ("gerSrcWrap").style.display = "none";
@@ -5941,8 +6135,9 @@ function gerReset() {
   gerQ("gerRefsInput").value = "";
   gerQ("gerSrcInput").value = "";
   gerQ("gerDownBtn").disabled = true;
-  const c = gerQ("gerCanvas").getContext("2d");
-  c.clearRect(0, 0, 1080, 1080);
+  const canvas = gerQ("gerCanvas");
+  canvas.width = 1080; canvas.height = 1080;
+  canvas.getContext("2d").clearRect(0, 0, 1080, 1080);
 }
 
 // wiring
@@ -5950,10 +6145,10 @@ function gerReset() {
   const refsDrop = gerQ("gerRefsDrop");
   const refsInput = gerQ("gerRefsInput");
   refsDrop.onclick = () => refsInput.click();
-  refsInput.onchange = () => gerAddRefFiles([...refsInput.files]);
+  refsInput.onchange = () => { GER.lastStyleDesc = ""; gerAddRefFiles([...refsInput.files]); };
   ["dragover","dragenter"].forEach(ev => refsDrop.addEventListener(ev, e => { e.preventDefault(); refsDrop.classList.add("drag"); }));
   ["dragleave","dragend","drop"].forEach(ev => refsDrop.addEventListener(ev, e => { e.preventDefault(); refsDrop.classList.remove("drag"); }));
-  refsDrop.addEventListener("drop", e => { e.preventDefault(); gerAddRefFiles([...(e.dataTransfer.files || [])]); });
+  refsDrop.addEventListener("drop", e => { e.preventDefault(); GER.lastStyleDesc = ""; gerAddRefFiles([...(e.dataTransfer.files || [])]); });
 
   const srcDrop = gerQ("gerSrcDrop");
   const srcInput = gerQ("gerSrcInput");
@@ -5964,10 +6159,31 @@ function gerReset() {
   srcDrop.addEventListener("drop", e => { e.preventDefault(); gerSetSource((e.dataTransfer.files || [])[0]); });
 
   gerQ("gerOcrBtn").onclick = gerRunOcr;
-  gerQ("gerGenBtn").onclick = gerRenderCanvas;
+  gerQ("gerGenBtn").onclick = () => { GER.lastStyleDesc = ""; gerRenderCanvas(); };
   gerQ("gerUpdateBtn").onclick = gerRenderCanvas;
   gerQ("gerDownBtn").onclick = gerDownloadPng;
   gerQ("gerResetBtn").onclick = gerReset;
+
+  const keyInput = gerQ("gerApiKey");
+  const existing = gerGetKey();
+  if (existing) keyInput.placeholder = "Chave já salva (cole nova pra substituir)";
+  gerQ("gerSaveKeyBtn").onclick = () => {
+    const v = (keyInput.value || "").trim();
+    if (!v) { alert("Cole uma API key válida."); return; }
+    if (!v.startsWith("sk-")) { if (!confirm("Essa chave não começa com 'sk-'. Salvar mesmo assim?")) return; }
+    gerSetKey(v);
+    keyInput.value = "";
+    keyInput.placeholder = "Chave salva ✓ (cole nova pra substituir)";
+    gerUpdateModeBadge();
+  };
+  gerQ("gerClearKeyBtn").onclick = () => {
+    if (!confirm("Apagar a API key salva neste navegador?")) return;
+    gerClearKey();
+    keyInput.value = "";
+    keyInput.placeholder = "Cole sua OpenAI API Key (sk-...) pra usar DALL-E 3";
+    gerUpdateModeBadge();
+  };
+  gerUpdateModeBadge();
 })();
 
 })(); // end main()
