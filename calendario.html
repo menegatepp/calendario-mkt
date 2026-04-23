@@ -928,6 +928,9 @@
     transition: all 0.12s;
   }
   .responsible-chips button:hover { background: #ececef; }
+  .responsible-chips button.active {
+    background: #e5e7eb; color: #1f2937; border-color: #1f2937;
+  }
   .responsible-chips button.chip-amanda.active {
     background: #d4edbc; color: #11734b; border-color: #11734b;
   }
@@ -1773,11 +1776,7 @@
       <div class="row-2">
         <div>
           <label>Responsáveis</label>
-          <div class="responsible-chips" id="fResponsible">
-            <button type="button" data-person="Amanda"  class="chip-amanda">Amanda</button>
-            <button type="button" data-person="Arthur"  class="chip-arthur">Arthur</button>
-            <button type="button" data-person="Eduarda" class="chip-eduarda">Eduarda</button>
-          </div>
+          <div class="responsible-chips" id="fResponsible"></div>
         </div>
         <div>
           <label>Finalizar no dia</label>
@@ -2118,8 +2117,20 @@ const STATUSES = [
   { id: "concluida",   label: "Concluída",    color: "#2ecc71" },
   { id: "cancelada",   label: "Cancelada",    color: "#e74c3c" }
 ];
-const RESPONSIBLES = ["Amanda", "Arthur", "Eduarda"];
 const STORAGE_KEY = "calendar-events-v1";
+const PEOPLE_KEY = "priority-people-v1";
+const DEFAULT_PEOPLE = [
+  { id: "amanda",  label: "Amanda" },
+  { id: "arthur",  label: "Arthur" },
+  { id: "eduarda", label: "Eduarda" }
+];
+function loadPeople() {
+  const s = storageGet(PEOPLE_KEY, null);
+  if (Array.isArray(s) && s.length && s.every(p => p && p.id && p.label)) return s;
+  return DEFAULT_PEOPLE.slice();
+}
+function savePeople() { storageSet(PEOPLE_KEY, PEOPLE); }
+let PEOPLE = loadPeople();
 
 let viewMode = "month"; // "month" | "week"
 let calendarTypeFilter = "all";
@@ -2595,9 +2606,29 @@ function populateSelects() {
     statusSel.appendChild(o);
   });
 
-  document.querySelectorAll("#fResponsible button").forEach(b => {
+  renderResponsibleChips();
+}
+
+function renderResponsibleChips() {
+  const box = document.getElementById("fResponsible");
+  if (!box) return;
+  const active = new Set([...box.querySelectorAll("button.active")].map(b => b.dataset.person));
+  box.innerHTML = "";
+  PEOPLE.forEach(p => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.person = p.label;
+    b.textContent = p.label;
+    b.className = "chip-" + p.id;
+    if (active.has(p.label)) b.classList.add("active");
     b.onclick = () => b.classList.toggle("active");
+    box.appendChild(b);
   });
+}
+
+function personIdFromLabel(label) {
+  const p = PEOPLE.find(x => x.label === label);
+  return p ? p.id : (label || "").toLowerCase();
 }
 
 function getResponsibles(ev) {
@@ -2648,7 +2679,7 @@ function openEdit(ev) {
   setFormType(ev && ev.type ? ev.type : defaultType);
   document.getElementById("fStatus").value = ev && ev.status ? ev.status : STATUSES[0].id;
   const evResps = ev ? getResponsibles(ev) : [];
-  setFormResponsibles(evResps.length ? evResps : [RESPONSIBLES[0]]);
+  setFormResponsibles(evResps.length ? evResps : (PEOPLE[0] ? [PEOPLE[0].label] : []));
   const fDateEl = document.getElementById("fDate");
   fDateEl.value = (ev && ev.finishDate) || activeDayKey;
   fDateEl.max = activeDayKey;
@@ -2739,7 +2770,7 @@ function findPriorityById(priorityId) {
 }
 
 function syncTaskPriority(ev) {
-  const TEAM = ["Amanda", "Arthur", "Eduarda"];
+  const TEAM = PEOPLE.map(p => p.label);
   const responsibles = getResponsibles(ev).filter(r => TEAM.includes(r));
 
   // Migra formato antigo (priorityId único) pro novo (priorityIds objeto)
@@ -2751,7 +2782,7 @@ function syncTaskPriority(ev) {
   }
 
   const current = ev.priorityIds = ev.priorityIds || {};
-  const wanted = new Set(responsibles.map(r => r.toLowerCase()));
+  const wanted = new Set(responsibles.map(r => personIdFromLabel(r)));
 
   // Remove prioridades de pessoas que não são mais responsáveis
   Object.keys(current).forEach(personId => {
@@ -2770,7 +2801,7 @@ function syncTaskPriority(ev) {
   const newText = ev.title || "(sem título)";
 
   responsibles.forEach(r => {
-    const personId = r.toLowerCase();
+    const personId = personIdFromLabel(r);
     priorities[personId] = normalizePersonPriorities(priorities[personId]);
 
     const existing = current[personId] ? findPriorityById(current[personId]) : null;
@@ -2921,7 +2952,7 @@ document.getElementById("addToPriorityBtn").onclick = () => {
 
   const added = [];
   for (const resp of responsibles) {
-    const personId = resp.toLowerCase();
+    const personId = personIdFromLabel(resp);
     priorities[personId] = normalizePersonPriorities(priorities[personId]);
     const list = priorities[personId][dayKey];
     const already = list.some(p => p.text === title && !p.done);
@@ -3598,19 +3629,6 @@ document.getElementById("navMkt").onclick = () => setView("mkt");
    ========================================================= */
 
 const PRIORITIES_KEY = "priorities-v1";
-const PEOPLE_KEY = "priority-people-v1";
-const DEFAULT_PEOPLE = [
-  { id: "amanda",  label: "Amanda" },
-  { id: "arthur",  label: "Arthur" },
-  { id: "eduarda", label: "Eduarda" }
-];
-function loadPeople() {
-  const s = storageGet(PEOPLE_KEY, null);
-  if (Array.isArray(s) && s.length && s.every(p => p && p.id && p.label)) return s;
-  return DEFAULT_PEOPLE.slice();
-}
-function savePeople() { storageSet(PEOPLE_KEY, PEOPLE); }
-let PEOPLE = loadPeople();
 const DAYS = [
   { key: "segunda", label: "Segunda-feira" },
   { key: "terca",   label: "Terça-feira" },
@@ -3702,6 +3720,7 @@ function createNewPersonTab() {
   activePerson = id;
   renderPriorityTabs();
   renderPriorities();
+  renderResponsibleChips();
 }
 
 function renderPriorities() {
@@ -4751,7 +4770,7 @@ function buildOverdueAlert() {
   const todayKey = keyOf(today);
   const overdueTasks = [];
 
-  const TEAM = ["Amanda", "Arthur", "Eduarda"];
+  const TEAM = PEOPLE.map(p => p.label);
   for (const k in events) {
     const list = events[k] || [];
     list.forEach(ev => {
@@ -4791,7 +4810,7 @@ function buildOverdueAlert() {
     who.className = "alert-whos";
     (responsibles && responsibles.length ? responsibles : ["—"]).forEach(r => {
       const tag = document.createElement("span");
-      tag.className = "alert-who " + (r || "").toLowerCase();
+      tag.className = "alert-who " + personIdFromLabel(r || "");
       tag.textContent = r;
       who.appendChild(tag);
     });
