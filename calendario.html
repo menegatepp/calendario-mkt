@@ -3363,12 +3363,24 @@ document.getElementById("addToPriorityBtn").onclick = () => {
   const photo = currentPhoto;
   const subtasksCopy = currentSubtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done }));
 
+  // Se estamos editando uma tarefa existente, considera o vínculo via priorityIds
+  // pra evitar duplicar prioridades que já foram sincronizadas.
+  const editingEvent = editingId
+    ? (events[activeDayKey] || []).find(e => e.id === editingId)
+    : null;
+  const linkedIds = (editingEvent && editingEvent.priorityIds) || {};
+
   const added = [];
   const skipped = [];
   for (const resp of responsibles) {
     const personId = personIdFromLabel(resp);
     priorities[personId] = normalizePersonPriorities(priorities[personId]);
     const list = priorities[personId][dayKey];
+    // 1) já existe prioridade ligada à tarefa via priorityIds?
+    if (linkedIds[personId] && findPriorityById(linkedIds[personId])) {
+      skipped.push(resp); continue;
+    }
+    // 2) ou uma prioridade solta com o mesmo título neste dia?
     const already = list.some(p => p.text === title);
     if (already) { skipped.push(resp); continue; }
     list.push({
