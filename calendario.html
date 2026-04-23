@@ -3291,12 +3291,13 @@ document.getElementById("addToPriorityBtn").onclick = () => {
   const subtasksCopy = currentSubtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done }));
 
   const added = [];
+  const skipped = [];
   for (const resp of responsibles) {
     const personId = personIdFromLabel(resp);
     priorities[personId] = normalizePersonPriorities(priorities[personId]);
     const list = priorities[personId][dayKey];
-    const already = list.some(p => p.text === title && !p.done);
-    if (already && !confirm(`Já existe uma prioridade pendente com esse título para ${resp} em ${dayLabel}. Adicionar assim mesmo?`)) continue;
+    const already = list.some(p => p.text === title);
+    if (already) { skipped.push(resp); continue; }
     list.push({
       id: uid(),
       text: title,
@@ -3309,9 +3310,10 @@ document.getElementById("addToPriorityBtn").onclick = () => {
     added.push(resp);
   }
   savePriorities();
-  if (added.length) {
-    alert(`"${title}" adicionado às prioridades de ${added.join(", ")} em ${dayLabel}.`);
-  }
+  const msgs = [];
+  if (added.length) msgs.push(`"${title}" adicionado às prioridades de ${added.join(", ")} em ${dayLabel}.`);
+  if (skipped.length) msgs.push(`Já existia uma prioridade com esse título para ${skipped.join(", ")} — ignorado.`);
+  if (msgs.length) alert(msgs.join("\n"));
 };
 
 document.getElementById("fPhoto").addEventListener("change", async e => {
@@ -3346,13 +3348,15 @@ function compressImage(file, maxSide, quality) {
         const canvas = document.createElement("canvas");
         canvas.width = width; canvas.height = height;
         canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
         canvas.toBlob(async (blob) => {
-          if (!blob) return reject(new Error("compressão falhou"));
+          if (!blob) { resolve(dataUrl); return; }
           try {
             const url = await uploadPhoto(blob, (file.name || "photo").replace(/\.[^.]+$/, "") + ".jpg");
             resolve(url);
           } catch (e) {
-            reject(new Error("falha ao enviar: " + (e && e.message ? e.message : e)));
+            console.warn("Upload de foto pro PocketBase falhou, usando base64 local:", e);
+            resolve(dataUrl);
           }
         }, "image/jpeg", quality);
       };
