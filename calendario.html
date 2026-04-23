@@ -779,6 +779,95 @@
     box-shadow: var(--shadow);
   }
 
+  /* gerador */
+  .ger-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 14px;
+  }
+  @media (max-width: 900px) { .ger-grid { grid-template-columns: 1fr; } }
+  .ger-col { display: flex; flex-direction: column; gap: 8px; }
+  .ger-label { font-weight: 600; font-size: 13px; }
+  .ger-label .muted { font-weight: 400; color: var(--muted); }
+  .ger-dropzone {
+    border: 2px dashed #d1d5db;
+    border-radius: 14px;
+    background: var(--soft);
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .ger-dropzone p { margin: 0; }
+  .ger-dropzone.drag { border-color: var(--black); background: #f3f4f6; color: var(--black); }
+  .ger-refs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+  }
+  .ger-refs-grid .ref-thumb {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #eee;
+  }
+  .ger-refs-grid .ref-thumb img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .ger-refs-grid .ref-thumb .rm {
+    position: absolute; top: 2px; right: 2px;
+    background: rgba(0,0,0,0.6); color: #fff;
+    border: none; border-radius: 50%; width: 20px; height: 20px;
+    font-size: 12px; line-height: 1; cursor: pointer;
+  }
+  .ger-palette-swatches {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;
+  }
+  .ger-palette-swatches .sw {
+    width: 28px; height: 28px; border-radius: 6px;
+    border: 1px solid rgba(0,0,0,0.1);
+    position: relative;
+    cursor: pointer;
+  }
+  .ger-palette-swatches .sw.selected::after {
+    content: "✓";
+    position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center;
+    color: #fff; text-shadow: 0 0 2px #000; font-weight: 700;
+  }
+  .ger-src-preview {
+    display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+  }
+  .ger-src-preview img {
+    max-width: 100%; max-height: 240px; border-radius: 10px; border: 1px solid #eee;
+  }
+  #gerTextArea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 13px;
+    resize: vertical;
+  }
+  .ger-actions {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+  }
+  .ger-output {
+    background: #fafafa; border-radius: 14px; padding: 14px;
+    display: flex; justify-content: center;
+  }
+  #gerCanvas {
+    max-width: 100%; height: auto;
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  }
+  .small { font-size: 11px; }
+
   .sheet-toolbar {
     display: flex;
     align-items: center;
@@ -1663,6 +1752,7 @@
   <button id="navCalendar" class="active">Calendário</button>
   <button id="navCreators">Creators</button>
   <button id="navMkt">Controle MKT</button>
+  <button id="navGer">Gerador</button>
 </div>
 
 <div id="calendarView">
@@ -1726,6 +1816,54 @@
     </div>
     <div class="sheet-table-wrap">
       <table class="sheet-table" id="mktTable"></table>
+    </div>
+  </div>
+</div>
+
+<div id="gerView" style="display:none">
+  <div class="sheet-card">
+    <div class="sheet-toolbar">
+      <h2>Gerador de post Instagram</h2>
+    </div>
+    <div class="ger-grid">
+      <div class="ger-col">
+        <label class="ger-label">Referências de design <span class="muted">(cores e layout)</span></label>
+        <div class="ger-dropzone" id="gerRefsDrop">
+          <p>Arraste imagens aqui ou clique</p>
+          <input type="file" id="gerRefsInput" multiple accept="image/*" hidden />
+        </div>
+        <div class="ger-refs-grid" id="gerRefsGrid"></div>
+        <div class="ger-palette" id="gerPalette" style="display:none">
+          <span class="muted small">Paleta detectada:</span>
+          <div class="ger-palette-swatches" id="gerPaletteSwatches"></div>
+        </div>
+      </div>
+
+      <div class="ger-col">
+        <label class="ger-label">Post de origem <span class="muted">(texto será extraído)</span></label>
+        <div class="ger-dropzone" id="gerSrcDrop">
+          <p>Arraste o post aqui ou clique</p>
+          <input type="file" id="gerSrcInput" accept="image/*" hidden />
+        </div>
+        <div class="ger-src-preview" id="gerSrcWrap" style="display:none">
+          <img id="gerSrcPreview" alt="" />
+          <button id="gerOcrBtn" class="primary">Extrair texto</button>
+        </div>
+        <div id="gerOcrStatus" class="muted small" style="display:none"></div>
+        <label class="ger-label" style="margin-top:12px">Texto do post (editável)</label>
+        <textarea id="gerTextArea" rows="6" placeholder="O texto extraído aparecerá aqui. Você pode editá-lo antes de gerar."></textarea>
+      </div>
+    </div>
+
+    <div class="ger-actions">
+      <button id="gerGenBtn" class="primary">Gerar</button>
+      <button id="gerUpdateBtn">Atualizar com texto editado</button>
+      <button id="gerDownBtn" disabled>Baixar PNG</button>
+      <button id="gerResetBtn" class="danger">Limpar tudo</button>
+    </div>
+
+    <div class="ger-output" id="gerOutput">
+      <canvas id="gerCanvas" width="1080" height="1080"></canvas>
     </div>
   </div>
 </div>
@@ -3600,13 +3738,15 @@ function setView(view) {
     calendar: document.getElementById("calendarView"),
     creators: document.getElementById("creatorsView"),
     priorities: document.getElementById("prioritiesView"),
-    mkt: document.getElementById("mktView")
+    mkt: document.getElementById("mktView"),
+    ger: document.getElementById("gerView")
   };
   const btns = {
     calendar: document.getElementById("navCalendar"),
     creators: document.getElementById("navCreators"),
     priorities: document.getElementById("navPriorities"),
-    mkt: document.getElementById("navMkt")
+    mkt: document.getElementById("navMkt"),
+    ger: document.getElementById("navGer")
   };
   Object.values(views).forEach(v => v.style.display = "none");
   Object.values(btns).forEach(b => b.classList.remove("active"));
@@ -3617,6 +3757,7 @@ function setView(view) {
   if (view === "creators") { renderSheetTabs(); renderSheet(); }
   else if (view === "priorities") { renderPriorityTabs(); renderPriorities(); }
   else if (view === "mkt") { renderMktTabs(); renderMktSheet(); }
+  else if (view === "ger") { /* nada a fazer — estado mantido */ }
   else { render(); }
 }
 
@@ -3624,6 +3765,7 @@ document.getElementById("navCalendar").onclick = () => setView("calendar");
 document.getElementById("navCreators").onclick = () => setView("creators");
 document.getElementById("navPriorities").onclick = () => setView("priorities");
 document.getElementById("navMkt").onclick = () => setView("mkt");
+document.getElementById("navGer").onclick = () => setView("ger");
 
 /* =========================================================
    PRIORIDADES — listas editáveis por pessoa
@@ -5500,6 +5642,333 @@ function restoreFromTrash(idx) {
   renderSheet();
   renderTrash();
 }
+
+/* =========================================================
+   GERADOR — compõe post Instagram a partir de refs + texto OCR
+   ========================================================= */
+const GER = {
+  refs: [],          // { img: HTMLImageElement, dataUrl: string }
+  srcDataUrl: null,
+  palette: [],       // array of "#rrggbb"
+  selectedBg: null,
+  selectedFg: null,
+  tesseractLoaded: false
+};
+
+function gerQ(id) { return document.getElementById(id); }
+
+function gerFileToImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("leitura"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("imagem inválida"));
+      img.onload = () => resolve({ img, dataUrl: reader.result });
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function gerExtractPaletteFromImages(imgs, k) {
+  if (!imgs.length) return [];
+  const canvas = document.createElement("canvas");
+  const W = 80, H = 80;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const samples = [];
+  imgs.forEach(img => {
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(img, 0, 0, W, H);
+    const data = ctx.getImageData(0, 0, W, H).data;
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i+3];
+      if (a < 128) continue;
+      const r = data[i], g = data[i+1], b = data[i+2];
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      if (max - min < 12 && max > 230) continue;
+      if (max < 20) continue;
+      samples.push([r, g, b]);
+    }
+  });
+  if (!samples.length) return ["#111111", "#ffffff", "#888888"];
+  return gerKmeans(samples, k || 5);
+}
+
+function gerKmeans(samples, k) {
+  const centers = [];
+  const seen = new Set();
+  while (centers.length < k && centers.length < samples.length) {
+    const s = samples[Math.floor(Math.random() * samples.length)];
+    const key = s.join(",");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    centers.push(s.slice());
+  }
+  for (let iter = 0; iter < 8; iter++) {
+    const groups = Array.from({ length: centers.length }, () => []);
+    for (const s of samples) {
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < centers.length; i++) {
+        const dr = s[0]-centers[i][0], dg = s[1]-centers[i][1], db = s[2]-centers[i][2];
+        const d = dr*dr + dg*dg + db*db;
+        if (d < bd) { bd = d; best = i; }
+      }
+      groups[best].push(s);
+    }
+    for (let i = 0; i < centers.length; i++) {
+      const g = groups[i];
+      if (!g.length) continue;
+      const avg = [0,0,0];
+      for (const s of g) { avg[0]+=s[0]; avg[1]+=s[1]; avg[2]+=s[2]; }
+      centers[i] = [avg[0]/g.length, avg[1]/g.length, avg[2]/g.length];
+    }
+  }
+  return centers
+    .map(c => [Math.round(c[0]), Math.round(c[1]), Math.round(c[2])])
+    .sort((a,b) => (b[0]+b[1]+b[2]) - (a[0]+a[1]+a[2]))
+    .map(c => "#" + c.map(x => x.toString(16).padStart(2,"0")).join(""));
+}
+
+function gerBestContrast(bg) {
+  const r = parseInt(bg.slice(1,3),16), g = parseInt(bg.slice(3,5),16), b = parseInt(bg.slice(5,7),16);
+  const lum = (0.299*r + 0.587*g + 0.114*b);
+  return lum > 140 ? "#111111" : "#ffffff";
+}
+
+function gerRenderRefs() {
+  const grid = gerQ("gerRefsGrid");
+  grid.innerHTML = "";
+  GER.refs.forEach((r, idx) => {
+    const thumb = document.createElement("div");
+    thumb.className = "ref-thumb";
+    const img = document.createElement("img");
+    img.src = r.dataUrl;
+    const rm = document.createElement("button");
+    rm.className = "rm";
+    rm.textContent = "×";
+    rm.title = "Remover";
+    rm.onclick = () => {
+      GER.refs.splice(idx, 1);
+      gerRefreshPalette();
+      gerRenderRefs();
+    };
+    thumb.appendChild(img);
+    thumb.appendChild(rm);
+    grid.appendChild(thumb);
+  });
+}
+
+function gerRefreshPalette() {
+  const imgs = GER.refs.map(r => r.img);
+  GER.palette = gerExtractPaletteFromImages(imgs, 5);
+  const box = gerQ("gerPalette");
+  const sw = gerQ("gerPaletteSwatches");
+  sw.innerHTML = "";
+  if (!GER.palette.length) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  GER.selectedBg = GER.palette[0];
+  GER.selectedFg = gerBestContrast(GER.selectedBg);
+  GER.palette.forEach(c => {
+    const s = document.createElement("div");
+    s.className = "sw" + (c === GER.selectedBg ? " selected" : "");
+    s.style.background = c;
+    s.title = c + " (clique pra usar como fundo)";
+    s.onclick = () => {
+      GER.selectedBg = c;
+      GER.selectedFg = gerBestContrast(c);
+      [...sw.querySelectorAll(".sw")].forEach(el => el.classList.toggle("selected", el.style.background === gerHexToRgbStr(c)));
+    };
+    sw.appendChild(s);
+  });
+}
+function gerHexToRgbStr(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+async function gerAddRefFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith("image/")) continue;
+    try {
+      const r = await gerFileToImage(f);
+      GER.refs.push(r);
+    } catch {}
+  }
+  gerRenderRefs();
+  gerRefreshPalette();
+}
+
+async function gerSetSource(file) {
+  if (!file || !file.type.startsWith("image/")) return;
+  try {
+    const r = await gerFileToImage(file);
+    GER.srcDataUrl = r.dataUrl;
+    const preview = gerQ("gerSrcPreview");
+    preview.src = r.dataUrl;
+    gerQ("gerSrcWrap").style.display = "flex";
+  } catch {}
+}
+
+function gerLoadTesseract() {
+  if (GER.tesseractLoaded) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    s.onload = () => { GER.tesseractLoaded = true; resolve(); };
+    s.onerror = () => reject(new Error("não foi possível carregar o Tesseract"));
+    document.head.appendChild(s);
+  });
+}
+
+async function gerRunOcr() {
+  if (!GER.srcDataUrl) return;
+  const status = gerQ("gerOcrStatus");
+  status.style.display = "block";
+  status.textContent = "Carregando OCR…";
+  try {
+    await gerLoadTesseract();
+    status.textContent = "Extraindo texto… isso pode levar 10-30s.";
+    const worker = await window.Tesseract.createWorker(["por", "eng"]);
+    const { data } = await worker.recognize(GER.srcDataUrl);
+    await worker.terminate();
+    gerQ("gerTextArea").value = (data.text || "").trim();
+    status.textContent = "Texto extraído. Edite livremente e clique em Gerar.";
+  } catch (err) {
+    status.textContent = "Erro no OCR: " + err.message;
+  }
+}
+
+function gerWrapText(ctx, text, maxWidth) {
+  const paragraphs = text.split(/\n+/);
+  const lines = [];
+  for (const p of paragraphs) {
+    if (!p.trim()) { lines.push(""); continue; }
+    const words = p.split(/\s+/);
+    let cur = "";
+    for (const w of words) {
+      const test = cur ? cur + " " + w : w;
+      if (ctx.measureText(test).width > maxWidth && cur) {
+        lines.push(cur);
+        cur = w;
+      } else {
+        cur = test;
+      }
+    }
+    if (cur) lines.push(cur);
+  }
+  return lines;
+}
+
+function gerRenderCanvas() {
+  const canvas = gerQ("gerCanvas");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+
+  const bg = GER.selectedBg || "#111111";
+  const fg = GER.selectedFg || "#ffffff";
+  const accent = GER.palette[1] || gerBestContrast(bg) === "#ffffff" ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
+
+  // fundo
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // barra de acento lateral
+  ctx.fillStyle = GER.palette[1] || fg;
+  ctx.globalAlpha = 0.35;
+  ctx.fillRect(0, 0, 24, H);
+  ctx.globalAlpha = 1;
+
+  // mini paleta no canto inferior
+  if (GER.palette.length) {
+    const sw = 40, gap = 10, bottom = H - 50;
+    GER.palette.slice(0, 5).forEach((c, i) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(60 + i * (sw + gap), bottom, sw, sw);
+    });
+  }
+
+  // texto central
+  const text = (gerQ("gerTextArea").value || "").trim() || "Seu texto aqui";
+  const padding = 110;
+  const maxWidth = W - padding * 2;
+
+  const baseSize = Math.max(36, Math.min(110, Math.floor(2200 / Math.max(12, text.length / 3))));
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  ctx.fillStyle = fg;
+
+  let size = baseSize;
+  let lines = [];
+  while (size > 28) {
+    ctx.font = `700 ${size}px -apple-system, Segoe UI, Roboto, sans-serif`;
+    lines = gerWrapText(ctx, text, maxWidth);
+    const totalH = lines.length * size * 1.2;
+    if (totalH <= H - padding * 2 - 110) break;
+    size -= 4;
+  }
+
+  const lineH = size * 1.2;
+  const totalH = lines.length * lineH;
+  let y = (H - totalH) / 2 + lineH / 2;
+  for (const line of lines) {
+    ctx.fillText(line, padding, y, maxWidth);
+    y += lineH;
+  }
+
+  gerQ("gerDownBtn").disabled = false;
+}
+
+function gerDownloadPng() {
+  const canvas = gerQ("gerCanvas");
+  const link = document.createElement("a");
+  link.download = "post-" + Date.now() + ".png";
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+}
+
+function gerReset() {
+  if (!confirm("Limpar referências, imagem e texto?")) return;
+  GER.refs = []; GER.srcDataUrl = null; GER.palette = [];
+  GER.selectedBg = null; GER.selectedFg = null;
+  gerQ("gerRefsGrid").innerHTML = "";
+  gerQ("gerPalette").style.display = "none";
+  gerQ("gerSrcWrap").style.display = "none";
+  gerQ("gerSrcPreview").src = "";
+  gerQ("gerOcrStatus").style.display = "none";
+  gerQ("gerTextArea").value = "";
+  gerQ("gerRefsInput").value = "";
+  gerQ("gerSrcInput").value = "";
+  gerQ("gerDownBtn").disabled = true;
+  const c = gerQ("gerCanvas").getContext("2d");
+  c.clearRect(0, 0, 1080, 1080);
+}
+
+// wiring
+(function wireGer(){
+  const refsDrop = gerQ("gerRefsDrop");
+  const refsInput = gerQ("gerRefsInput");
+  refsDrop.onclick = () => refsInput.click();
+  refsInput.onchange = () => gerAddRefFiles([...refsInput.files]);
+  ["dragover","dragenter"].forEach(ev => refsDrop.addEventListener(ev, e => { e.preventDefault(); refsDrop.classList.add("drag"); }));
+  ["dragleave","dragend","drop"].forEach(ev => refsDrop.addEventListener(ev, e => { e.preventDefault(); refsDrop.classList.remove("drag"); }));
+  refsDrop.addEventListener("drop", e => { e.preventDefault(); gerAddRefFiles([...(e.dataTransfer.files || [])]); });
+
+  const srcDrop = gerQ("gerSrcDrop");
+  const srcInput = gerQ("gerSrcInput");
+  srcDrop.onclick = () => srcInput.click();
+  srcInput.onchange = () => gerSetSource(srcInput.files[0]);
+  ["dragover","dragenter"].forEach(ev => srcDrop.addEventListener(ev, e => { e.preventDefault(); srcDrop.classList.add("drag"); }));
+  ["dragleave","dragend","drop"].forEach(ev => srcDrop.addEventListener(ev, e => { e.preventDefault(); srcDrop.classList.remove("drag"); }));
+  srcDrop.addEventListener("drop", e => { e.preventDefault(); gerSetSource((e.dataTransfer.files || [])[0]); });
+
+  gerQ("gerOcrBtn").onclick = gerRunOcr;
+  gerQ("gerGenBtn").onclick = gerRenderCanvas;
+  gerQ("gerUpdateBtn").onclick = gerRenderCanvas;
+  gerQ("gerDownBtn").onclick = gerDownloadPng;
+  gerQ("gerResetBtn").onclick = gerReset;
+})();
 
 })(); // end main()
 </script>
