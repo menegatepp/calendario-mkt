@@ -2941,6 +2941,8 @@ function syncTaskPriority(ev) {
       const item = existing.list[existing.idx];
       item.text = newText;
       item.finishDate = ev.finishDate || "";
+      item.description = ev.description || "";
+      item.photos = ev.photo ? [ev.photo] : [];
       if (!sameLocation) {
         existing.list.splice(existing.idx, 1);
         const newList = priorities[personId][targetDay] = priorities[personId][targetDay] || [];
