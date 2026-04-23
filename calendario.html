@@ -5,7 +5,7 @@
 <title>Calendário de Tarefas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Unbounded:wght@700;800;900&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #e8e8ea;
@@ -422,6 +422,42 @@
     transform: translateX(-50%);
     border: 5px solid transparent;
     border-top-color: var(--black);
+  }
+
+  /* logo canto superior direito */
+  .brand-logo {
+    position: fixed;
+    top: 18px;
+    right: 22px;
+    z-index: 50;
+    font-family: "Unbounded", "Inter", sans-serif;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+    color: var(--black);
+    line-height: 1;
+    padding: 10px 16px;
+    background: var(--card);
+    border-radius: 999px;
+    box-shadow: var(--shadow);
+    user-select: none;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .brand-logo .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--neon, #d4f24c);
+    display: inline-block;
+  }
+  .brand-logo .slash {
+    color: var(--muted);
+    font-weight: 500;
+    margin: 0 -1px;
+  }
+  @media (max-width: 720px) {
+    .brand-logo { font-size: 11px; padding: 7px 12px; top: 10px; right: 10px; }
   }
 
   /* main view switcher */
@@ -1293,8 +1329,23 @@
     font-size: 14px;
     flex: none;
   }
+  .overdue-alert .alert-toggle {
+    background: transparent;
+    border: none;
+    color: #7a1f12;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: transform 0.2s, background 0.15s;
+    line-height: 1;
+  }
+  .overdue-alert .alert-toggle:hover { background: rgba(122, 31, 18, 0.1); }
+  .overdue-alert.collapsed .alert-toggle { transform: rotate(-90deg); }
+  .overdue-alert.collapsed .alert-list { display: none; }
+  .overdue-alert.collapsed { padding-bottom: 12px; }
+  .overdue-alert.collapsed .alert-header { margin-bottom: 0; }
   .overdue-alert .alert-count {
-    margin-left: auto;
     background: #d64545;
     color: #fff;
     padding: 3px 11px;
@@ -1570,6 +1621,52 @@
   }
   .priority-item:hover .del-prio { opacity: 1; }
   .priority-item .del-prio:hover { background: #fff2f2; }
+  .priority-item .detail-prio {
+    border: none;
+    background: transparent;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .priority-item:hover .detail-prio { opacity: 1; }
+  .priority-item .detail-prio:hover { background: #f3f4f6; color: var(--black); }
+  .priority-item .detail-prio.has-data {
+    opacity: 1; color: var(--black);
+  }
+
+  /* grid de fotos do modal de prioridade */
+  .priority-photos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .priority-photos .photo {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #f3f4f6;
+  }
+  .priority-photos .photo img {
+    width: 100%; height: 100%; object-fit: cover;
+    cursor: pointer;
+  }
+  .priority-photos .photo .rm {
+    position: absolute; top: 4px; right: 4px;
+    background: rgba(0,0,0,0.65); color: #fff;
+    border: none; border-radius: 50%;
+    width: 24px; height: 24px; font-size: 13px;
+    cursor: pointer;
+    padding: 0; line-height: 1;
+  }
+  .priority-photos .photo .rm:hover { background: rgba(200,0,0,0.9); }
 
   .priorities-empty {
     text-align: center;
@@ -1658,6 +1755,11 @@
 </style>
 </head>
 <body>
+
+<div class="brand-logo" aria-label="HUB MKT/DESIGN">
+  <span class="dot"></span>
+  <span>HUB</span><span class="slash">/</span><span>MKT</span><span class="slash">/</span><span>DESIGN</span>
+</div>
 
 <div class="view-switcher">
   <button id="navPriorities">Prioridades</button>
@@ -1832,6 +1934,31 @@
 </div>
 
 <!-- Modal: histórico de prioridades excluídas -->
+<!-- Modal: detalhes de uma prioridade (descrição + fotos) -->
+<div id="priorityDetailOverlay" class="overlay">
+  <div class="modal">
+    <header>
+      <h1 id="priorityDetailTitle">Detalhes</h1>
+    </header>
+    <div class="body">
+      <label>Descrição</label>
+      <textarea id="priorityDetailDesc" placeholder="Detalhes desta prioridade..."></textarea>
+
+      <label>Fotos</label>
+      <input type="file" id="priorityDetailFiles" accept="image/*" multiple />
+      <p class="hint">Você pode selecionar várias imagens de uma vez. São comprimidas e salvas no navegador.</p>
+      <div id="priorityDetailPhotos" class="priority-photos"></div>
+    </div>
+    <div class="foot">
+      <span></span>
+      <div class="right">
+        <button id="priorityDetailCancelBtn">Cancelar</button>
+        <button class="primary" id="priorityDetailSaveBtn">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="priorityTrashOverlay" class="overlay">
   <div class="modal">
     <header>
@@ -3631,6 +3758,7 @@ document.getElementById("navMkt").onclick = () => setView("mkt");
    ========================================================= */
 
 const PRIORITIES_KEY = "priorities-v1";
+const OVERDUE_COLLAPSED_KEY = "overdue-collapsed-v1";
 const DAYS = [
   { key: "segunda", label: "Segunda-feira" },
   { key: "terca",   label: "Terça-feira" },
@@ -3838,6 +3966,17 @@ function buildPriorityItem(item, sourceList, personId, dayKey) {
   label.textContent = item.done ? "Feito" : "Pendente";
   row.appendChild(label);
 
+  const hasData = !!(item.description || (item.photos && item.photos.length));
+  const detail = document.createElement("button");
+  detail.className = "detail-prio" + (hasData ? " has-data" : "");
+  detail.textContent = hasData ? "📝" : "✎";
+  detail.title = "Abrir detalhes (descrição e fotos)";
+  detail.onclick = (e) => {
+    e.stopPropagation();
+    openPriorityDetail(item);
+  };
+  row.appendChild(detail);
+
   const del = document.createElement("button");
   del.className = "del-prio";
   del.textContent = "×";
@@ -3855,6 +3994,81 @@ function buildPriorityItem(item, sourceList, personId, dayKey) {
 
   return row;
 }
+
+/* ---------- Modal de detalhes de uma prioridade ---------- */
+let priorityDetailEditing = null;   // ref pro item sendo editado
+let priorityDetailDraft = null;     // { description, photos[] } rascunho
+
+function openPriorityDetail(item) {
+  priorityDetailEditing = item;
+  priorityDetailDraft = {
+    description: item.description || "",
+    photos: Array.isArray(item.photos) ? item.photos.slice() : []
+  };
+  document.getElementById("priorityDetailTitle").textContent = item.text || "Detalhes";
+  document.getElementById("priorityDetailDesc").value = priorityDetailDraft.description;
+  document.getElementById("priorityDetailFiles").value = "";
+  renderPriorityDetailPhotos();
+  document.getElementById("priorityDetailOverlay").classList.add("show");
+}
+function closePriorityDetail() {
+  priorityDetailEditing = null;
+  priorityDetailDraft = null;
+  document.getElementById("priorityDetailOverlay").classList.remove("show");
+}
+function renderPriorityDetailPhotos() {
+  const grid = document.getElementById("priorityDetailPhotos");
+  grid.innerHTML = "";
+  if (!priorityDetailDraft.photos.length) return;
+  priorityDetailDraft.photos.forEach((src, idx) => {
+    const wrap = document.createElement("div");
+    wrap.className = "photo";
+    const img = document.createElement("img");
+    img.src = src;
+    img.onclick = () => window.open(src, "_blank", "noopener");
+    const rm = document.createElement("button");
+    rm.className = "rm";
+    rm.textContent = "×";
+    rm.title = "Remover esta foto";
+    rm.onclick = () => {
+      priorityDetailDraft.photos.splice(idx, 1);
+      renderPriorityDetailPhotos();
+    };
+    wrap.appendChild(img);
+    wrap.appendChild(rm);
+    grid.appendChild(wrap);
+  });
+}
+async function handlePriorityDetailUpload(files) {
+  for (const f of files) {
+    if (!f.type.startsWith("image/")) continue;
+    try {
+      const dataUrl = await compressImage(f, 1200, 0.8);
+      priorityDetailDraft.photos.push(dataUrl);
+    } catch (err) {
+      alert("Não foi possível processar a imagem: " + err.message);
+    }
+  }
+  renderPriorityDetailPhotos();
+}
+function savePriorityDetail() {
+  if (!priorityDetailEditing) return;
+  priorityDetailEditing.description = priorityDetailDraft.description;
+  priorityDetailEditing.photos = priorityDetailDraft.photos.slice();
+  savePriorities();
+  closePriorityDetail();
+  renderPriorities();
+}
+
+document.getElementById("priorityDetailCancelBtn").onclick = closePriorityDetail;
+document.getElementById("priorityDetailSaveBtn").onclick = savePriorityDetail;
+document.getElementById("priorityDetailDesc").addEventListener("input", (e) => {
+  if (priorityDetailDraft) priorityDetailDraft.description = e.target.value;
+});
+document.getElementById("priorityDetailFiles").addEventListener("change", (e) => {
+  handlePriorityDetailUpload([...(e.target.files || [])]);
+  e.target.value = "";
+});
 
 /* =========================================================
    PROCURAR INFLUENCERS — catálogo curado do nicho maternidade
@@ -4791,13 +5005,22 @@ function buildOverdueAlert() {
 
   const card = document.createElement("div");
   card.className = "overdue-alert";
+  const collapsed = storageGet(OVERDUE_COLLAPSED_KEY, false);
+  if (collapsed) card.classList.add("collapsed");
 
   const header = document.createElement("div");
   header.className = "alert-header";
   header.innerHTML =
     `<span class="alert-icon">!</span>` +
     `<span>Tarefas atrasadas</span>` +
-    `<span class="alert-count">${overdueTasks.length}</span>`;
+    `<span class="alert-count">${overdueTasks.length}</span>` +
+    `<button type="button" class="alert-toggle" title="Expandir/recolher">▾</button>`;
+  const toggleBtn = header.querySelector(".alert-toggle");
+  toggleBtn.onclick = (e) => {
+    e.stopPropagation();
+    card.classList.toggle("collapsed");
+    storageSet(OVERDUE_COLLAPSED_KEY, card.classList.contains("collapsed"));
+  };
   card.appendChild(header);
 
   const list = document.createElement("div");
