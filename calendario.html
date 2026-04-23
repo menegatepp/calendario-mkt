@@ -778,6 +778,90 @@
     padding: 18px;
     box-shadow: var(--shadow);
   }
+
+  /* inspo (inspirações) */
+  .inspo-add-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .inspo-add-row input {
+    flex: 1;
+    min-width: 240px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    border: 1px solid #e5e7eb;
+    background: var(--soft);
+    font-size: 13px;
+  }
+  .inspo-hint {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 0 0 14px 0;
+  }
+  .inspo-empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 32px 0;
+    font-size: 13px;
+  }
+  .inspo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 18px;
+  }
+  .inspo-card {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 18px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .inspo-card .inspo-embed {
+    min-height: 240px;
+    display: flex;
+    justify-content: center;
+  }
+  .inspo-card .inspo-embed iframe,
+  .inspo-card .inspo-embed blockquote {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+  .inspo-card .inspo-note {
+    width: 100%;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 52px;
+  }
+  .inspo-card .inspo-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .inspo-card .inspo-actions .meta {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .inspo-card button.save-btn.saved {
+    background: var(--neon);
+    color: var(--black);
+  }
+  .inspo-card button.del-btn {
+    background: transparent;
+    color: #b00020;
+  }
+  .inspo-card button.del-btn:hover { background: #fff2f2; }
   .sheet-toolbar {
     display: flex;
     align-items: center;
@@ -1662,6 +1746,7 @@
   <button id="navCalendar" class="active">Calendário</button>
   <button id="navCreators">Creators</button>
   <button id="navMkt">Controle MKT</button>
+  <button id="navInspo">Inspirações</button>
 </div>
 
 <div id="calendarView">
@@ -1728,6 +1813,25 @@
     </div>
   </div>
 </div>
+
+<div id="inspoView" style="display:none">
+  <div class="sheets-tabs-row">
+    <div class="sheets-tabs" id="inspoTabs"></div>
+  </div>
+  <div class="sheet-card">
+    <div class="sheet-toolbar">
+      <h2 id="inspoTitle">Inspirações</h2>
+    </div>
+    <div class="inspo-add-row">
+      <input type="text" id="inspoUrlInput" placeholder="Cole o link de um post do Instagram ou Facebook (ex: instagram.com/p/...)" />
+      <button id="inspoAddBtn" class="primary">+ Adicionar</button>
+    </div>
+    <p class="inspo-hint" id="inspoHint">Os posts ficam salvos no seu navegador. Clique em "Salvar" num card para enviá-lo para a aba Salvos.</p>
+    <div class="inspo-grid" id="inspoGrid"></div>
+    <p class="inspo-empty" id="inspoEmpty" style="display:none">Nenhum post nesta aba ainda.</p>
+  </div>
+</div>
+<div id="fb-root"></div>
 
 <!-- Modal: lista/edit de eventos do dia -->
 <div id="dayOverlay" class="overlay">
@@ -3599,13 +3703,15 @@ function setView(view) {
     calendar: document.getElementById("calendarView"),
     creators: document.getElementById("creatorsView"),
     priorities: document.getElementById("prioritiesView"),
-    mkt: document.getElementById("mktView")
+    mkt: document.getElementById("mktView"),
+    inspo: document.getElementById("inspoView")
   };
   const btns = {
     calendar: document.getElementById("navCalendar"),
     creators: document.getElementById("navCreators"),
     priorities: document.getElementById("navPriorities"),
-    mkt: document.getElementById("navMkt")
+    mkt: document.getElementById("navMkt"),
+    inspo: document.getElementById("navInspo")
   };
   Object.values(views).forEach(v => v.style.display = "none");
   Object.values(btns).forEach(b => b.classList.remove("active"));
@@ -3616,6 +3722,7 @@ function setView(view) {
   if (view === "creators") { renderSheetTabs(); renderSheet(); }
   else if (view === "priorities") { renderPriorityTabs(); renderPriorities(); }
   else if (view === "mkt") { renderMktTabs(); renderMktSheet(); }
+  else if (view === "inspo") { renderInspoTabs(); renderInspoGrid(); }
   else { render(); }
 }
 
@@ -3623,6 +3730,7 @@ document.getElementById("navCalendar").onclick = () => setView("calendar");
 document.getElementById("navCreators").onclick = () => setView("creators");
 document.getElementById("navPriorities").onclick = () => setView("priorities");
 document.getElementById("navMkt").onclick = () => setView("mkt");
+document.getElementById("navInspo").onclick = () => setView("inspo");
 
 /* =========================================================
    PRIORIDADES — listas editáveis por pessoa
@@ -5499,6 +5607,213 @@ function restoreFromTrash(idx) {
   renderSheet();
   renderTrash();
 }
+
+/* =========================================================
+   INSPIRAÇÕES — posts salvos do Instagram/Facebook
+   ========================================================= */
+const INSPO_KEY = "inspo-posts-v1";
+let inspoPosts = loadInspoPosts();
+let activeInspoTab = "all";
+let inspoSdksLoaded = false;
+
+function loadInspoPosts() {
+  const s = storageGet(INSPO_KEY, null);
+  return Array.isArray(s) ? s : [];
+}
+function saveInspoPosts() { storageSet(INSPO_KEY, inspoPosts); }
+
+function detectInspoPlatform(url) {
+  if (!url) return null;
+  if (/instagram\.com\/(p|reel|reels|tv)\//i.test(url)) return "instagram";
+  if (/(^|\/\/)(www\.|m\.|web\.)?facebook\.com\//i.test(url)) return "facebook";
+  if (/fb\.watch\//i.test(url)) return "facebook";
+  return null;
+}
+function normalizeInspoUrl(url) {
+  try {
+    const u = new URL(url.trim());
+    u.search = "";
+    u.hash = "";
+    return u.toString().replace(/\/$/, "");
+  } catch { return (url || "").trim(); }
+}
+
+function loadInspoSdks() {
+  if (inspoSdksLoaded) return;
+  inspoSdksLoaded = true;
+  const ig = document.createElement("script");
+  ig.src = "https://www.instagram.com/embed.js";
+  ig.async = true;
+  document.head.appendChild(ig);
+  const fb = document.createElement("script");
+  fb.src = "https://connect.facebook.net/pt_BR/sdk.js#xfbml=1&version=v18.0";
+  fb.async = true; fb.defer = true;
+  fb.crossOrigin = "anonymous";
+  document.head.appendChild(fb);
+}
+function processInspoEmbeds() {
+  try { if (window.instgrm && window.instgrm.Embeds) window.instgrm.Embeds.process(); } catch {}
+  try { if (window.FB && window.FB.XFBML) window.FB.XFBML.parse(); } catch {}
+}
+
+function buildInspoEmbed(post) {
+  if (post.platform === "instagram") {
+    return `<blockquote class="instagram-media" data-instgrm-permalink="${post.url}" data-instgrm-version="14" style="margin:0 auto;min-width:260px;width:100%;"></blockquote>`;
+  }
+  if (post.platform === "facebook") {
+    return `<div class="fb-post" data-href="${post.url}" data-show-text="true" data-width="500"></div>`;
+  }
+  return `<a href="${post.url}" target="_blank" rel="noopener">${post.url}</a>`;
+}
+
+function addInspoPost() {
+  const input = document.getElementById("inspoUrlInput");
+  const raw = (input.value || "").trim();
+  if (!raw) return;
+  const url = normalizeInspoUrl(raw);
+  const platform = detectInspoPlatform(url);
+  if (!platform) {
+    alert("URL não reconhecida. Cole um link de post do Instagram (instagram.com/p/... ou /reel/...) ou do Facebook (facebook.com/... ou fb.watch/...).");
+    return;
+  }
+  if (inspoPosts.some(p => p.url === url)) {
+    alert("Esse post já foi adicionado.");
+    input.value = "";
+    return;
+  }
+  inspoPosts.unshift({
+    id: uid(),
+    url,
+    platform,
+    note: "",
+    saved: false,
+    addedAt: new Date().toISOString()
+  });
+  saveInspoPosts();
+  input.value = "";
+  renderInspoTabs();
+  renderInspoGrid();
+}
+
+function toggleInspoSaved(id) {
+  const p = inspoPosts.find(x => x.id === id);
+  if (!p) return;
+  p.saved = !p.saved;
+  saveInspoPosts();
+  renderInspoTabs();
+  renderInspoGrid();
+}
+function removeInspoPost(id) {
+  const p = inspoPosts.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm("Remover este post?")) return;
+  inspoPosts = inspoPosts.filter(x => x.id !== id);
+  saveInspoPosts();
+  renderInspoTabs();
+  renderInspoGrid();
+}
+function updateInspoNote(id, note) {
+  const p = inspoPosts.find(x => x.id === id);
+  if (!p) return;
+  p.note = note;
+  saveInspoPosts();
+}
+
+function renderInspoTabs() {
+  const box = document.getElementById("inspoTabs");
+  if (!box) return;
+  const savedCount = inspoPosts.filter(p => p.saved).length;
+  const tabs = [
+    { id: "all",   label: `Todos (${inspoPosts.length})` },
+    { id: "saved", label: `Salvos (${savedCount})` }
+  ];
+  box.innerHTML = "";
+  tabs.forEach(t => {
+    const b = document.createElement("button");
+    b.textContent = t.label;
+    if (t.id === activeInspoTab) b.classList.add("active");
+    b.onclick = () => { activeInspoTab = t.id; renderInspoTabs(); renderInspoGrid(); };
+    box.appendChild(b);
+  });
+}
+
+function renderInspoGrid() {
+  const grid = document.getElementById("inspoGrid");
+  const empty = document.getElementById("inspoEmpty");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const list = activeInspoTab === "saved"
+    ? inspoPosts.filter(p => p.saved)
+    : inspoPosts;
+  if (!list.length) {
+    empty.style.display = "block";
+    empty.textContent = activeInspoTab === "saved"
+      ? 'Nenhum post salvo ainda. Clique em "Salvar" num card da aba "Todos" para adicioná-lo aqui.'
+      : 'Cole um link de post acima para começar.';
+    return;
+  }
+  empty.style.display = "none";
+
+  list.forEach(post => {
+    const card = document.createElement("div");
+    card.className = "inspo-card";
+
+    const embed = document.createElement("div");
+    embed.className = "inspo-embed";
+    embed.innerHTML = buildInspoEmbed(post);
+    card.appendChild(embed);
+
+    const note = document.createElement("textarea");
+    note.className = "inspo-note";
+    note.placeholder = "Nota (opcional): o que gostou, ideia, referência…";
+    note.value = post.note || "";
+    note.oninput = () => updateInspoNote(post.id, note.value);
+    card.appendChild(note);
+
+    const actions = document.createElement("div");
+    actions.className = "inspo-actions";
+
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = post.platform === "instagram" ? "Instagram" : "Facebook";
+    actions.appendChild(meta);
+
+    const right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.gap = "6px";
+
+    const openBtn = document.createElement("button");
+    openBtn.textContent = "Abrir";
+    openBtn.onclick = () => window.open(post.url, "_blank", "noopener");
+    right.appendChild(openBtn);
+
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "save-btn" + (post.saved ? " saved" : "");
+    saveBtn.textContent = post.saved ? "✓ Salvo" : "Salvar";
+    saveBtn.onclick = () => toggleInspoSaved(post.id);
+    right.appendChild(saveBtn);
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "del-btn";
+    delBtn.textContent = "Excluir";
+    delBtn.onclick = () => removeInspoPost(post.id);
+    right.appendChild(delBtn);
+
+    actions.appendChild(right);
+    card.appendChild(actions);
+
+    grid.appendChild(card);
+  });
+
+  loadInspoSdks();
+  setTimeout(processInspoEmbeds, 300);
+}
+
+document.getElementById("inspoAddBtn").onclick = addInspoPost;
+document.getElementById("inspoUrlInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); addInspoPost(); }
+});
+
 })(); // end main()
 </script>
 </body>
