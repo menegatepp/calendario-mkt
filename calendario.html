@@ -3199,6 +3199,22 @@ function isTaskPriorityCompleted(ev) {
   } catch { return false; }
 }
 
+function syncTaskStatusFromPriority(priorityItem) {
+  if (!priorityItem) return;
+  const linked = findTaskByPriorityId(priorityItem.id);
+  if (!linked) return;
+  const allDone = isTaskPriorityCompleted(linked.ev);
+  if (allDone && linked.ev.status !== "concluida") {
+    linked.ev.status = "concluida";
+    saveEvents();
+    render();
+  } else if (!allDone && linked.ev.status === "concluida") {
+    linked.ev.status = "andamento";
+    saveEvents();
+    render();
+  }
+}
+
 function findTaskByPriorityId(priorityId) {
   for (const dayKey in events) {
     const list = events[dayKey];
@@ -4303,6 +4319,7 @@ function buildPriorityItem(item, sourceList, personId, dayKey) {
     e.stopPropagation();
     item.done = !item.done;
     savePriorities();
+    syncTaskStatusFromPriority(item);
     renderPriorities();
   };
   row.appendChild(check);
