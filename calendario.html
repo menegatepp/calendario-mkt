@@ -1621,23 +1621,22 @@
   }
   .priority-item:hover .del-prio { opacity: 1; }
   .priority-item .del-prio:hover { background: #fff2f2; }
-  .priority-item .detail-prio {
-    border: none;
-    background: transparent;
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    cursor: pointer;
-    color: var(--muted);
-    font-size: 14px;
-    opacity: 0;
-    transition: opacity 0.15s;
-    padding: 0;
-    display: flex; align-items: center; justify-content: center;
+  .priority-item.clickable { cursor: pointer; }
+  .priority-item.clickable:hover { background: #f9fafb; }
+  .priority-item .detail-indicator {
+    font-size: 12px;
+    opacity: 0.75;
+    margin-right: 2px;
   }
-  .priority-item:hover .detail-prio { opacity: 1; }
-  .priority-item .detail-prio:hover { background: #f3f4f6; color: var(--black); }
-  .priority-item .detail-prio.has-data {
-    opacity: 1; color: var(--black);
+
+  #priorityDetailText {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 14px;
+    margin-bottom: 6px;
   }
 
   /* grid de fotos do modal de prioridade */
@@ -1934,13 +1933,16 @@
 </div>
 
 <!-- Modal: histórico de prioridades excluídas -->
-<!-- Modal: detalhes de uma prioridade (descrição + fotos) -->
+<!-- Modal: detalhes de uma prioridade (título + descrição + fotos) -->
 <div id="priorityDetailOverlay" class="overlay">
   <div class="modal">
     <header>
       <h1 id="priorityDetailTitle">Detalhes</h1>
     </header>
     <div class="body">
+      <label>Título</label>
+      <input type="text" id="priorityDetailText" placeholder="Título da prioridade" />
+
       <label>Descrição</label>
       <textarea id="priorityDetailDesc" placeholder="Detalhes desta prioridade..."></textarea>
 
@@ -2947,7 +2949,14 @@ function syncTaskPriority(ev) {
     } else {
       const newList = priorities[personId][targetDay] = priorities[personId][targetDay] || [];
       const newId = uid();
-      newList.push({ id: newId, text: newText, done: false, finishDate: ev.finishDate || "" });
+      newList.push({
+        id: newId,
+        text: newText,
+        done: false,
+        finishDate: ev.finishDate || "",
+        description: ev.description || "",
+        photos: ev.photo ? [ev.photo] : []
+      });
       current[personId] = newId;
     }
   });
@@ -3078,6 +3087,8 @@ document.getElementById("addToPriorityBtn").onclick = () => {
   const finishDate = document.getElementById("fDate").value || activeDayKey;
   const dayKey = dayKeyFromDateStr(finishDate);
   const dayLabel = (DAYS.find(d => d.key === dayKey) || DAYS[0]).label;
+  const description = document.getElementById("fDesc").value || "";
+  const photo = currentPhoto;
 
   const added = [];
   for (const resp of responsibles) {
@@ -3086,7 +3097,14 @@ document.getElementById("addToPriorityBtn").onclick = () => {
     const list = priorities[personId][dayKey];
     const already = list.some(p => p.text === title && !p.done);
     if (already && !confirm(`Já existe uma prioridade pendente com esse título para ${resp} em ${dayLabel}. Adicionar assim mesmo?`)) continue;
-    list.push({ id: uid(), text: title, done: false, finishDate });
+    list.push({
+      id: uid(),
+      text: title,
+      done: false,
+      finishDate,
+      description,
+      photos: photo ? [photo] : []
+    });
     added.push(resp);
   }
   savePriorities();
@@ -3929,13 +3947,16 @@ function renderPriorities() {
 
 function buildPriorityItem(item, sourceList, personId, dayKey) {
   const row = document.createElement("div");
-  row.className = "priority-item" + (item.done ? " done" : "");
+  row.className = "priority-item clickable" + (item.done ? " done" : "");
+  row.title = "Clique para ver detalhes";
+  row.onclick = () => openPriorityDetail(item);
 
   const check = document.createElement("div");
   check.className = "check";
   check.textContent = "✓";
   check.title = item.done ? "Desmarcar" : "Marcar como feito";
-  check.onclick = () => {
+  check.onclick = (e) => {
+    e.stopPropagation();
     item.done = !item.done;
     savePriorities();
     renderPriorities();
@@ -3944,44 +3965,29 @@ function buildPriorityItem(item, sourceList, personId, dayKey) {
 
   const text = document.createElement("div");
   text.className = "text";
-  text.contentEditable = "true";
-  text.setAttribute("data-ph", "Digite a prioridade...");
-  text.textContent = item.text || "";
-  text.addEventListener("blur", () => {
-    item.text = text.innerText.replace(/\r\n/g, "\n").trim();
-    savePriorities();
-  });
-  text.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); text.blur(); }
-  });
-  text.addEventListener("paste", e => {
-    e.preventDefault();
-    const t = (e.clipboardData || window.clipboardData).getData("text");
-    document.execCommand("insertText", false, t);
-  });
+  text.textContent = item.text || "(sem título)";
   row.appendChild(text);
+
+  const hasData = !!(item.description || (item.photos && item.photos.length));
+  if (hasData) {
+    const badge = document.createElement("span");
+    badge.className = "detail-indicator";
+    badge.textContent = "📝";
+    badge.title = "Tem descrição/fotos";
+    row.appendChild(badge);
+  }
 
   const label = document.createElement("div");
   label.className = "done-label";
   label.textContent = item.done ? "Feito" : "Pendente";
   row.appendChild(label);
 
-  const hasData = !!(item.description || (item.photos && item.photos.length));
-  const detail = document.createElement("button");
-  detail.className = "detail-prio" + (hasData ? " has-data" : "");
-  detail.textContent = hasData ? "📝" : "✎";
-  detail.title = "Abrir detalhes (descrição e fotos)";
-  detail.onclick = (e) => {
-    e.stopPropagation();
-    openPriorityDetail(item);
-  };
-  row.appendChild(detail);
-
   const del = document.createElement("button");
   del.className = "del-prio";
   del.textContent = "×";
   del.title = "Excluir prioridade";
-  del.onclick = () => {
+  del.onclick = (e) => {
+    e.stopPropagation();
     const i = sourceList.indexOf(item);
     if (i >= 0) {
       archivePriority(personId, item, "Excluída manualmente", dayKey);
@@ -4002,10 +4008,12 @@ let priorityDetailDraft = null;     // { description, photos[] } rascunho
 function openPriorityDetail(item) {
   priorityDetailEditing = item;
   priorityDetailDraft = {
+    text: item.text || "",
     description: item.description || "",
     photos: Array.isArray(item.photos) ? item.photos.slice() : []
   };
-  document.getElementById("priorityDetailTitle").textContent = item.text || "Detalhes";
+  document.getElementById("priorityDetailTitle").textContent = "Detalhes da prioridade";
+  document.getElementById("priorityDetailText").value = priorityDetailDraft.text;
   document.getElementById("priorityDetailDesc").value = priorityDetailDraft.description;
   document.getElementById("priorityDetailFiles").value = "";
   renderPriorityDetailPhotos();
@@ -4053,6 +4061,8 @@ async function handlePriorityDetailUpload(files) {
 }
 function savePriorityDetail() {
   if (!priorityDetailEditing) return;
+  const newText = (priorityDetailDraft.text || "").trim();
+  priorityDetailEditing.text = newText || priorityDetailEditing.text;
   priorityDetailEditing.description = priorityDetailDraft.description;
   priorityDetailEditing.photos = priorityDetailDraft.photos.slice();
   savePriorities();
@@ -4062,6 +4072,9 @@ function savePriorityDetail() {
 
 document.getElementById("priorityDetailCancelBtn").onclick = closePriorityDetail;
 document.getElementById("priorityDetailSaveBtn").onclick = savePriorityDetail;
+document.getElementById("priorityDetailText").addEventListener("input", (e) => {
+  if (priorityDetailDraft) priorityDetailDraft.text = e.target.value;
+});
 document.getElementById("priorityDetailDesc").addEventListener("input", (e) => {
   if (priorityDetailDraft) priorityDetailDraft.description = e.target.value;
 });
