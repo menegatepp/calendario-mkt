@@ -1742,6 +1742,67 @@
   .priority-item .del-prio:hover { background: #fff2f2; }
   .priority-item.clickable { cursor: pointer; }
   .priority-item.clickable:hover { background: #f9fafb; }
+
+  /* semana anterior (colapsável) */
+  .prev-week-section {
+    grid-column: 1 / -1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .prev-week-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .prev-week-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .prev-week-range {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .prev-week-count {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 600;
+    background: var(--soft);
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+  .prev-week-toggle {
+    background: transparent;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: transform 0.2s;
+    line-height: 1;
+  }
+  .prev-week-toggle:hover { background: var(--soft); }
+  .prev-week-section.collapsed .prev-week-toggle { transform: rotate(-90deg); }
+  .prev-week-section.collapsed .prev-week-body { display: none; }
+  .prev-week-body {
+    padding: 0 16px 16px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+  }
+  @media (max-width: 1200px) { .prev-week-body { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 780px)  { .prev-week-body { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 520px)  { .prev-week-body { grid-template-columns: 1fr; } }
   .priority-main {
     flex: 1; min-width: 0;
     display: flex; flex-direction: column; gap: 4px;
@@ -3326,6 +3387,24 @@ function isInCurrentWeek(dateKey) {
   return dateKey >= startKey && dateKey <= endKey;
 }
 
+function previousWeekRange() {
+  const { startKey } = currentWeekRange();
+  const [y, m, d] = startKey.split("-").map(Number);
+  const thisMonday = new Date(y, m - 1, d);
+  const prevMonday = new Date(thisMonday);
+  prevMonday.setDate(thisMonday.getDate() - 7);
+  const prevSunday = new Date(thisMonday);
+  prevSunday.setDate(thisMonday.getDate() - 1);
+  return { startKey: keyOf(prevMonday), endKey: keyOf(prevSunday) };
+}
+function isInPreviousWeek(dateKey) {
+  if (!dateKey) return false;
+  const { startKey, endKey } = previousWeekRange();
+  return dateKey >= startKey && dateKey <= endKey;
+}
+
+const PREV_WEEK_COLLAPSED_KEY = "prev-week-collapsed-v1";
+
 const DELETED_PRIORITIES_KEY = "priorities-deleted-v1";
 
 function loadDeletedPriorities() {
@@ -4303,6 +4382,84 @@ function renderPriorities() {
     section.appendChild(listEl);
     box.appendChild(section);
   });
+
+  // Semana anterior (colapsável) — agrupa prioridades da semana passada por dia
+  const prev = buildPreviousWeekSection(personData);
+  if (prev) box.appendChild(prev);
+}
+
+function buildPreviousWeekSection(personData) {
+  const byDay = {};
+  let total = 0, done = 0;
+  DAYS.forEach(day => {
+    const list = (personData[day.key] || []).filter(item => isInPreviousWeek(item.finishDate));
+    byDay[day.key] = list;
+    total += list.length;
+    done += list.filter(i => i.done).length;
+  });
+  if (total === 0) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "prev-week-section";
+  const collapsed = storageGet(PREV_WEEK_COLLAPSED_KEY, true);
+  if (collapsed) wrap.classList.add("collapsed");
+
+  const header = document.createElement("div");
+  header.className = "prev-week-header";
+  const title = document.createElement("div");
+  title.className = "prev-week-title";
+  const { startKey, endKey } = previousWeekRange();
+  const fmt = k => k.split("-").reverse().slice(0, 2).join("/");
+  title.innerHTML = `<span>Semana anterior</span><span class="prev-week-range">${fmt(startKey)}–${fmt(endKey)}</span>`;
+  const count = document.createElement("span");
+  count.className = "prev-week-count";
+  count.textContent = `${done}/${total} feitas`;
+  const toggle = document.createElement("span");
+  toggle.className = "prev-week-toggle";
+  toggle.textContent = "▾";
+  toggle.title = "Expandir/recolher";
+  header.onclick = () => {
+    wrap.classList.toggle("collapsed");
+    storageSet(PREV_WEEK_COLLAPSED_KEY, wrap.classList.contains("collapsed"));
+  };
+  header.appendChild(title);
+  header.appendChild(count);
+  header.appendChild(toggle);
+  wrap.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "prev-week-body";
+  DAYS.forEach(day => {
+    const list = byDay[day.key];
+    if (!list.length) return;
+    const section = document.createElement("div");
+    section.className = "day-section";
+    const dayHeader = document.createElement("div");
+    dayHeader.className = "day-header";
+    const h = document.createElement("h3");
+    h.textContent = day.label;
+    dayHeader.appendChild(h);
+    const meta = document.createElement("div");
+    meta.className = "day-meta";
+    const c = document.createElement("span");
+    c.className = "day-count";
+    const dn = list.filter(i => i.done).length;
+    c.textContent = `${dn}/${list.length} feitas`;
+    meta.appendChild(c);
+    dayHeader.appendChild(meta);
+    section.appendChild(dayHeader);
+
+    const listEl = document.createElement("div");
+    listEl.className = "day-list";
+    list.forEach(item => {
+      listEl.appendChild(buildPriorityItem(item, personData[day.key], activePerson, day.key));
+    });
+    section.appendChild(listEl);
+    body.appendChild(section);
+  });
+  wrap.appendChild(body);
+
+  return wrap;
 }
 
 function buildPriorityItem(item, sourceList, personId, dayKey) {
