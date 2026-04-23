@@ -2038,7 +2038,6 @@
     <div class="foot">
       <button class="danger" id="deleteBtn">Excluir</button>
       <div class="right">
-        <button class="neon" id="addToPriorityBtn" title="Adicionar esta tarefa à lista de prioridades do responsável">+ Prioridade</button>
         <button id="saveAndNewBtn" title="Salva e abre uma nova tarefa em branco no mesmo dia">+ Salvar e nova</button>
         <button id="cancelEditBtn">Cancelar</button>
         <button class="primary" id="saveEditBtn">Salvar</button>
@@ -3344,62 +3343,6 @@ document.getElementById("fSubtaskAddBtn").onclick = addFormSubtask;
 document.getElementById("fSubtaskInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); addFormSubtask(); }
 });
-
-document.getElementById("addToPriorityBtn").onclick = () => {
-  const title = document.getElementById("fTitle").value.trim();
-  const responsibles = getFormResponsibles();
-  if (!title) {
-    alert("Preencha o título da tarefa antes de adicionar à prioridade.");
-    return;
-  }
-  if (!responsibles.length) {
-    alert("Selecione pelo menos um responsável.");
-    return;
-  }
-  const finishDate = document.getElementById("fDate").value || activeDayKey;
-  const dayKey = dayKeyFromDateStr(finishDate);
-  const dayLabel = (DAYS.find(d => d.key === dayKey) || DAYS[0]).label;
-  const description = document.getElementById("fDesc").value || "";
-  const photo = currentPhoto;
-  const subtasksCopy = currentSubtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done }));
-
-  // Se estamos editando uma tarefa existente, considera o vínculo via priorityIds
-  // pra evitar duplicar prioridades que já foram sincronizadas.
-  const editingEvent = editingId
-    ? (events[activeDayKey] || []).find(e => e.id === editingId)
-    : null;
-  const linkedIds = (editingEvent && editingEvent.priorityIds) || {};
-
-  const added = [];
-  const skipped = [];
-  for (const resp of responsibles) {
-    const personId = personIdFromLabel(resp);
-    priorities[personId] = normalizePersonPriorities(priorities[personId]);
-    const list = priorities[personId][dayKey];
-    // 1) já existe prioridade ligada à tarefa via priorityIds?
-    if (linkedIds[personId] && findPriorityById(linkedIds[personId])) {
-      skipped.push(resp); continue;
-    }
-    // 2) ou uma prioridade solta com o mesmo título neste dia?
-    const already = list.some(p => p.text === title);
-    if (already) { skipped.push(resp); continue; }
-    list.push({
-      id: uid(),
-      text: title,
-      done: false,
-      finishDate,
-      description,
-      photos: photo ? [photo] : [],
-      subtasks: subtasksCopy.map(s => ({ ...s }))
-    });
-    added.push(resp);
-  }
-  savePriorities();
-  const msgs = [];
-  if (added.length) msgs.push(`"${title}" adicionado às prioridades de ${added.join(", ")} em ${dayLabel}.`);
-  if (skipped.length) msgs.push(`Já existia uma prioridade com esse título para ${skipped.join(", ")} — ignorado.`);
-  if (msgs.length) alert(msgs.join("\n"));
-};
 
 document.getElementById("fPhoto").addEventListener("change", async e => {
   const f = e.target.files[0];
