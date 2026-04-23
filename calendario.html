@@ -321,6 +321,99 @@
     flex-direction: column;
     box-shadow: 0 30px 80px rgba(0,0,0,0.25);
   }
+  .modal.wide { width: 880px; }
+
+  /* edit-grid: 2 colunas dentro do body do modal de edição */
+  .edit-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .edit-grid > .col { display: flex; flex-direction: column; }
+  @media (max-width: 820px) {
+    .edit-grid { grid-template-columns: 1fr; gap: 12px; }
+    .modal.wide { width: 540px; }
+  }
+
+  /* subtarefas */
+  .subtasks {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .subtask-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--soft);
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .subtask-item .subtask-check {
+    width: 18px; height: 18px;
+    border: 1.5px solid #c9c9d1;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 11px;
+    flex: none;
+    color: transparent;
+  }
+  .subtask-item.done .subtask-check {
+    background: var(--black);
+    border-color: var(--black);
+    color: #fff;
+  }
+  .subtask-item .subtask-text {
+    flex: 1;
+    outline: none;
+    padding: 2px 4px;
+    border-radius: 4px;
+    word-break: break-word;
+  }
+  .subtask-item .subtask-text:focus { background: #fffee8; }
+  .subtask-item.done .subtask-text {
+    text-decoration: line-through;
+    opacity: 0.55;
+  }
+  .subtask-item .subtask-del {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0.6;
+  }
+  .subtask-item .subtask-del:hover { opacity: 1; background: #fff2f2; color: #b00020; }
+  .subtask-add {
+    display: flex;
+    gap: 6px;
+  }
+  .subtask-add input {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .subtask-add button {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .subtask-empty {
+    color: var(--muted);
+    font-size: 12px;
+    padding: 4px 0;
+  }
   .modal header {
     padding: 22px 26px 6px;
     display: block;
@@ -1854,55 +1947,65 @@
 
 <!-- Modal: edit de 1 evento -->
 <div id="editOverlay" class="overlay">
-  <div class="modal">
+  <div class="modal wide">
     <header>
       <h1 id="editTitle">Nova tarefa</h1>
     </header>
     <div class="body">
-      <label>Título</label>
-      <input type="text" id="fTitle" placeholder="Ex.: Decorando cozinha" />
+      <div class="edit-grid">
+        <div class="col">
+          <label>Título</label>
+          <input type="text" id="fTitle" placeholder="Ex.: Decorando cozinha" />
 
-      <label>Descrição</label>
-      <textarea id="fDesc" placeholder="Detalhes da tarefa..."></textarea>
+          <label>Descrição</label>
+          <textarea id="fDesc" placeholder="Detalhes da tarefa..." rows="4"></textarea>
 
-      <div class="row-2">
-        <div>
-          <label>Tipo de tarefa</label>
-          <select id="fType"></select>
+          <label>Subtarefas</label>
+          <div class="subtasks" id="fSubtasks"></div>
+          <div class="subtask-add">
+            <input type="text" id="fSubtaskInput" placeholder="Adicionar subtarefa..." />
+            <button type="button" id="fSubtaskAddBtn">+</button>
+          </div>
         </div>
-        <div>
-          <label>Status</label>
-          <select id="fStatus"></select>
+
+        <div class="col">
+          <div class="row-2">
+            <div>
+              <label>Tipo de tarefa</label>
+              <select id="fType"></select>
+            </div>
+            <div>
+              <label>Status</label>
+              <select id="fStatus"></select>
+            </div>
+          </div>
+
+          <div class="row-2">
+            <div>
+              <label>Responsáveis</label>
+              <div class="responsible-chips" id="fResponsible"></div>
+            </div>
+            <div>
+              <label>Finalizar no dia</label>
+              <input type="date" id="fDate" />
+            </div>
+          </div>
+
+          <label>Cor</label>
+          <div class="colors" id="colorPicker"></div>
+
+          <label>Categoria rápida</label>
+          <div class="special-types" id="specialTypes">
+            <button type="button" data-type="Post" class="special-type post">Post</button>
+            <button type="button" data-type="Story" class="special-type story">Story</button>
+            <button type="button" data-type="Grupo VIP" class="special-type vip">Grupo VIP</button>
+          </div>
+
+          <label>Foto (opcional)</label>
+          <input type="file" id="fPhoto" accept="image/*" />
+          <img id="photoPreview" class="photo-preview" />
         </div>
       </div>
-
-      <div class="row-2">
-        <div>
-          <label>Responsáveis</label>
-          <div class="responsible-chips" id="fResponsible"></div>
-        </div>
-        <div>
-          <label>Finalizar no dia</label>
-          <input type="date" id="fDate" />
-        </div>
-      </div>
-
-      <label>Cor</label>
-      <div class="colors" id="colorPicker"></div>
-      <p class="hint">Ao escolher um tipo, a cor é aplicada automaticamente (mas pode ser alterada).</p>
-
-      <label>Categoria rápida</label>
-      <div class="special-types" id="specialTypes">
-        <button type="button" data-type="Post" class="special-type post">Post</button>
-        <button type="button" data-type="Story" class="special-type story">Story</button>
-        <button type="button" data-type="Grupo VIP" class="special-type vip">Grupo VIP</button>
-      </div>
-      <p class="hint">Clique em uma dessas categorias para marcar a tarefa. Também substitui o tipo selecionado acima.</p>
-
-      <label>Foto (opcional)</label>
-      <input type="file" id="fPhoto" accept="image/*" />
-      <img id="photoPreview" class="photo-preview" />
-      <p class="hint">A imagem é salva localmente no navegador (base64).</p>
     </div>
     <div class="foot">
       <button class="danger" id="deleteBtn">Excluir</button>
@@ -1945,6 +2048,13 @@
 
       <label>Descrição</label>
       <textarea id="priorityDetailDesc" placeholder="Detalhes desta prioridade..."></textarea>
+
+      <label>Subtarefas</label>
+      <div class="subtasks" id="priorityDetailSubtasks"></div>
+      <div class="subtask-add">
+        <input type="text" id="priorityDetailSubtaskInput" placeholder="Adicionar subtarefa..." />
+        <button type="button" id="priorityDetailSubtaskAddBtn">+</button>
+      </div>
 
       <label>Fotos</label>
       <input type="file" id="priorityDetailFiles" accept="image/*" multiple />
@@ -2438,6 +2548,7 @@ let activeDayKey = null;
 let editingId = null;
 let selectedColor = COLORS[0];
 let currentPhoto = null;
+let currentSubtasks = []; // [{ id, text, done }]
 let dragInfo = null; // { fromKey, eventId }
 
 const tooltipEl = document.createElement("div");
@@ -2784,6 +2895,77 @@ function setFormResponsibles(list) {
   });
 }
 
+/* ---- Subtarefas (usado em fSubtasks e priorityDetailSubtasks) ---- */
+function subtaskUid() { return "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
+
+function buildSubtaskRow(st, onChange) {
+  const row = document.createElement("div");
+  row.className = "subtask-item" + (st.done ? " done" : "");
+
+  const chk = document.createElement("div");
+  chk.className = "subtask-check";
+  chk.textContent = "✓";
+  chk.title = st.done ? "Desmarcar" : "Marcar como feita";
+  chk.onclick = () => { st.done = !st.done; onChange("toggle", st); };
+  row.appendChild(chk);
+
+  const txt = document.createElement("div");
+  txt.className = "subtask-text";
+  txt.contentEditable = "true";
+  txt.textContent = st.text || "";
+  txt.addEventListener("blur", () => {
+    const v = txt.innerText.trim();
+    if (v !== st.text) { st.text = v; onChange("text", st); }
+  });
+  txt.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); txt.blur(); }
+  });
+  row.appendChild(txt);
+
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "subtask-del";
+  del.textContent = "×";
+  del.title = "Remover";
+  del.onclick = () => onChange("remove", st);
+  row.appendChild(del);
+
+  return row;
+}
+
+function renderSubtasksList(container, list, onChange) {
+  container.innerHTML = "";
+  if (!list.length) {
+    const empty = document.createElement("div");
+    empty.className = "subtask-empty";
+    empty.textContent = "Nenhuma subtarefa.";
+    container.appendChild(empty);
+    return;
+  }
+  list.forEach(st => container.appendChild(buildSubtaskRow(st, onChange)));
+}
+
+function renderFormSubtasks() {
+  const box = document.getElementById("fSubtasks");
+  if (!box) return;
+  renderSubtasksList(box, currentSubtasks, (action, st) => {
+    if (action === "remove") {
+      const i = currentSubtasks.indexOf(st);
+      if (i >= 0) currentSubtasks.splice(i, 1);
+    }
+    renderFormSubtasks();
+  });
+}
+function addFormSubtask() {
+  const input = document.getElementById("fSubtaskInput");
+  const v = (input.value || "").trim();
+  if (!v) return;
+  currentSubtasks.push({ id: subtaskUid(), text: v, done: false });
+  input.value = "";
+  renderFormSubtasks();
+  input.focus();
+}
+
 function setFormType(typeName) {
   const isSpecial = SPECIAL_TYPE_NAMES.includes(typeName);
   const typeSel = document.getElementById("fType");
@@ -2821,6 +3003,11 @@ function openEdit(ev) {
   if (currentPhoto) { prev.src = currentPhoto; prev.classList.add("show"); }
   else { prev.classList.remove("show"); prev.removeAttribute("src"); }
   document.getElementById("fPhoto").value = "";
+  currentSubtasks = (ev && Array.isArray(ev.subtasks))
+    ? ev.subtasks.map(s => ({ id: s.id || subtaskUid(), text: s.text || "", done: !!s.done }))
+    : [];
+  renderFormSubtasks();
+  document.getElementById("fSubtaskInput").value = "";
   document.getElementById("deleteBtn").style.visibility = ev ? "visible" : "hidden";
   document.getElementById("saveAndNewBtn").style.display = ev ? "none" : "";
   renderColors();
@@ -2861,7 +3048,8 @@ function saveEdit(keepOpen) {
     responsible, responsibles,
     finishDate,
     color: selectedColor,
-    photo: currentPhoto
+    photo: currentPhoto,
+    subtasks: currentSubtasks.map(s => ({ id: s.id, text: s.text, done: !!s.done }))
   };
 
   let savedEv;
@@ -2935,6 +3123,9 @@ function syncTaskPriority(ev) {
     const personId = personIdFromLabel(r);
     priorities[personId] = normalizePersonPriorities(priorities[personId]);
 
+    const subtasksCopy = Array.isArray(ev.subtasks)
+      ? ev.subtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done }))
+      : [];
     const existing = current[personId] ? findPriorityById(current[personId]) : null;
     if (existing) {
       const sameLocation = existing.dayKey === targetDay;
@@ -2943,6 +3134,7 @@ function syncTaskPriority(ev) {
       item.finishDate = ev.finishDate || "";
       item.description = ev.description || "";
       item.photos = ev.photo ? [ev.photo] : [];
+      item.subtasks = subtasksCopy;
       if (!sameLocation) {
         existing.list.splice(existing.idx, 1);
         const newList = priorities[personId][targetDay] = priorities[personId][targetDay] || [];
@@ -2957,7 +3149,8 @@ function syncTaskPriority(ev) {
         done: false,
         finishDate: ev.finishDate || "",
         description: ev.description || "",
-        photos: ev.photo ? [ev.photo] : []
+        photos: ev.photo ? [ev.photo] : [],
+        subtasks: subtasksCopy
       });
       current[personId] = newId;
     }
@@ -3074,6 +3267,10 @@ document.getElementById("cancelEditBtn").onclick = () => document.getElementById
 document.getElementById("saveEditBtn").onclick = () => saveEdit(false);
 document.getElementById("saveAndNewBtn").onclick = () => saveEdit(true);
 document.getElementById("deleteBtn").onclick = deleteEvent;
+document.getElementById("fSubtaskAddBtn").onclick = addFormSubtask;
+document.getElementById("fSubtaskInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); addFormSubtask(); }
+});
 
 document.getElementById("addToPriorityBtn").onclick = () => {
   const title = document.getElementById("fTitle").value.trim();
@@ -3091,6 +3288,7 @@ document.getElementById("addToPriorityBtn").onclick = () => {
   const dayLabel = (DAYS.find(d => d.key === dayKey) || DAYS[0]).label;
   const description = document.getElementById("fDesc").value || "";
   const photo = currentPhoto;
+  const subtasksCopy = currentSubtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done }));
 
   const added = [];
   for (const resp of responsibles) {
@@ -3105,7 +3303,8 @@ document.getElementById("addToPriorityBtn").onclick = () => {
       done: false,
       finishDate,
       description,
-      photos: photo ? [photo] : []
+      photos: photo ? [photo] : [],
+      subtasks: subtasksCopy.map(s => ({ ...s }))
     });
     added.push(resp);
   }
@@ -4012,13 +4211,18 @@ function openPriorityDetail(item) {
   priorityDetailDraft = {
     text: item.text || "",
     description: item.description || "",
-    photos: Array.isArray(item.photos) ? item.photos.slice() : []
+    photos: Array.isArray(item.photos) ? item.photos.slice() : [],
+    subtasks: Array.isArray(item.subtasks)
+      ? item.subtasks.map(s => ({ id: s.id || subtaskUid(), text: s.text || "", done: !!s.done }))
+      : []
   };
   document.getElementById("priorityDetailTitle").textContent = "Detalhes da prioridade";
   document.getElementById("priorityDetailText").value = priorityDetailDraft.text;
   document.getElementById("priorityDetailDesc").value = priorityDetailDraft.description;
   document.getElementById("priorityDetailFiles").value = "";
+  document.getElementById("priorityDetailSubtaskInput").value = "";
   renderPriorityDetailPhotos();
+  renderPriorityDetailSubtasks();
   document.getElementById("priorityDetailOverlay").classList.add("show");
 }
 function closePriorityDetail() {
@@ -4067,9 +4271,32 @@ function savePriorityDetail() {
   priorityDetailEditing.text = newText || priorityDetailEditing.text;
   priorityDetailEditing.description = priorityDetailDraft.description;
   priorityDetailEditing.photos = priorityDetailDraft.photos.slice();
+  priorityDetailEditing.subtasks = priorityDetailDraft.subtasks.map(s => ({ ...s }));
   savePriorities();
   closePriorityDetail();
   renderPriorities();
+}
+
+function renderPriorityDetailSubtasks() {
+  const box = document.getElementById("priorityDetailSubtasks");
+  if (!box || !priorityDetailDraft) return;
+  renderSubtasksList(box, priorityDetailDraft.subtasks, (action, st) => {
+    if (action === "remove") {
+      const i = priorityDetailDraft.subtasks.indexOf(st);
+      if (i >= 0) priorityDetailDraft.subtasks.splice(i, 1);
+    }
+    renderPriorityDetailSubtasks();
+  });
+}
+function addPriorityDetailSubtask() {
+  if (!priorityDetailDraft) return;
+  const input = document.getElementById("priorityDetailSubtaskInput");
+  const v = (input.value || "").trim();
+  if (!v) return;
+  priorityDetailDraft.subtasks.push({ id: subtaskUid(), text: v, done: false });
+  input.value = "";
+  renderPriorityDetailSubtasks();
+  input.focus();
 }
 
 document.getElementById("priorityDetailCancelBtn").onclick = closePriorityDetail;
@@ -4079,6 +4306,10 @@ document.getElementById("priorityDetailText").addEventListener("input", (e) => {
 });
 document.getElementById("priorityDetailDesc").addEventListener("input", (e) => {
   if (priorityDetailDraft) priorityDetailDraft.description = e.target.value;
+});
+document.getElementById("priorityDetailSubtaskAddBtn").onclick = addPriorityDetailSubtask;
+document.getElementById("priorityDetailSubtaskInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); addPriorityDetailSubtask(); }
 });
 document.getElementById("priorityDetailFiles").addEventListener("change", (e) => {
   handlePriorityDetailUpload([...(e.target.files || [])]);
