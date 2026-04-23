@@ -3155,42 +3155,48 @@ function saveEdit(keepOpen) {
 }
 
 function findPriorityById(priorityId) {
-  const personIds = PEOPLE.map(p => p.id);
-  for (const personId of personIds) {
-    const personData = priorities[personId];
-    if (!personData) continue;
-    for (const dayKey of DAYS.map(d => d.key)) {
-      const list = personData[dayKey] || [];
-      const idx = list.findIndex(p => p.id === priorityId);
-      if (idx >= 0) return { personId, dayKey, idx, list };
+  try {
+    const personIds = PEOPLE.map(p => p.id);
+    for (const personId of personIds) {
+      const personData = priorities[personId];
+      if (!personData) continue;
+      for (const dayKey of DAYS.map(d => d.key)) {
+        const list = personData[dayKey] || [];
+        const idx = list.findIndex(p => p.id === priorityId);
+        if (idx >= 0) return { personId, dayKey, idx, list };
+      }
     }
-  }
-  return null;
+    return null;
+  } catch { return null; }
 }
 
 function isPriorityArchived(personId, priorityId) {
-  if (!priorityId) return false;
-  const list = deletedPriorities[personId] || [];
-  return list.some(d => d.id === priorityId);
+  try {
+    if (!priorityId) return false;
+    const list = deletedPriorities[personId] || [];
+    return list.some(d => d.id === priorityId);
+  } catch { return false; }
 }
 
 function isTaskPriorityCompleted(ev) {
-  if (!ev || !ev.priorityIds) return false;
-  const team = PEOPLE.map(p => p.label);
-  const resps = (getResponsibles(ev) || []).filter(r => team.includes(r));
-  if (!resps.length) return false;
-  for (const r of resps) {
-    const pid = personIdFromLabel(r);
-    const priorityId = ev.priorityIds[pid];
-    if (!priorityId) return false;
-    const found = findPriorityById(priorityId);
-    if (found) {
-      if (!found.list[found.idx].done) return false;
-    } else if (!isPriorityArchived(pid, priorityId)) {
-      return false;
+  try {
+    if (!ev || !ev.priorityIds) return false;
+    const team = PEOPLE.map(p => p.label);
+    const resps = (getResponsibles(ev) || []).filter(r => team.includes(r));
+    if (!resps.length) return false;
+    for (const r of resps) {
+      const pid = personIdFromLabel(r);
+      const priorityId = ev.priorityIds[pid];
+      if (!priorityId) return false;
+      const found = findPriorityById(priorityId);
+      if (found) {
+        if (!found.list[found.idx].done) return false;
+      } else if (!isPriorityArchived(pid, priorityId)) {
+        return false;
+      }
     }
-  }
-  return true;
+    return true;
+  } catch { return false; }
 }
 
 function findTaskByPriorityId(priorityId) {
