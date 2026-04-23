@@ -3076,13 +3076,30 @@ function saveEdit(keepOpen) {
 }
 
 function findPriorityById(priorityId) {
-  for (const personId of ["amanda", "arthur", "eduarda"]) {
+  const personIds = PEOPLE.map(p => p.id);
+  for (const personId of personIds) {
     const personData = priorities[personId];
     if (!personData) continue;
     for (const dayKey of DAYS.map(d => d.key)) {
       const list = personData[dayKey] || [];
       const idx = list.findIndex(p => p.id === priorityId);
       if (idx >= 0) return { personId, dayKey, idx, list };
+    }
+  }
+  return null;
+}
+
+function findTaskByPriorityId(priorityId) {
+  for (const dayKey in events) {
+    const list = events[dayKey];
+    if (!Array.isArray(list)) continue;
+    for (const ev of list) {
+      if (!ev.priorityIds) continue;
+      for (const pid in ev.priorityIds) {
+        if (ev.priorityIds[pid] === priorityId) {
+          return { ev, dayKey, personId: pid };
+        }
+      }
     }
   }
   return null;
@@ -4277,6 +4294,19 @@ function savePriorityDetail() {
   priorityDetailEditing.photos = priorityDetailDraft.photos.slice();
   priorityDetailEditing.subtasks = priorityDetailDraft.subtasks.map(s => ({ ...s }));
   savePriorities();
+
+  // Sincroniza de volta pra tarefa ligada (bidirecional)
+  const linked = findTaskByPriorityId(priorityDetailEditing.id);
+  if (linked) {
+    linked.ev.title = priorityDetailEditing.text;
+    linked.ev.description = priorityDetailEditing.description;
+    linked.ev.subtasks = priorityDetailEditing.subtasks.map(s => ({ ...s }));
+    linked.ev.photo = priorityDetailEditing.photos[0] || null;
+    saveEvents();
+    syncTaskPriority(linked.ev); // propaga pras outras prioridades ligadas (ex: outros responsáveis)
+    render();
+  }
+
   closePriorityDetail();
   renderPriorities();
 }
