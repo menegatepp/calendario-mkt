@@ -1716,6 +1716,28 @@
   .priority-item .del-prio:hover { background: #fff2f2; }
   .priority-item.clickable { cursor: pointer; }
   .priority-item.clickable:hover { background: #f9fafb; }
+  .priority-main {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .priority-progress {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 6px;
+  }
+  .priority-progress-bar {
+    flex: 1; height: 4px;
+    background: #e5e7eb; border-radius: 2px; overflow: hidden;
+  }
+  .priority-progress-fill {
+    height: 100%; background: var(--black);
+    transition: width 0.2s ease;
+  }
+  .priority-progress-fill.complete { background: #2ecc71; }
+  .priority-progress-label {
+    font-size: 10px; color: var(--muted);
+    font-weight: 600; flex: none;
+    letter-spacing: 0.02em;
+  }
 
   #priorityDetailText {
     width: 100%;
@@ -3216,6 +3238,11 @@ function archivePriority(personId, item, reason, dayKey) {
     done: !!item.done,
     finishDate: item.finishDate || "",
     dayKey: dayKey || "",
+    description: item.description || "",
+    photos: Array.isArray(item.photos) ? item.photos.slice() : [],
+    subtasks: Array.isArray(item.subtasks)
+      ? item.subtasks.map(s => ({ ...s }))
+      : [],
     deletedAt: Date.now(),
     reason: reason || "Excluído manualmente"
   });
@@ -4180,10 +4207,35 @@ function buildPriorityItem(item, sourceList, personId, dayKey) {
   };
   row.appendChild(check);
 
+  const main = document.createElement("div");
+  main.className = "priority-main";
+
   const text = document.createElement("div");
   text.className = "text";
   text.textContent = item.text || "(sem título)";
-  row.appendChild(text);
+  main.appendChild(text);
+
+  if (Array.isArray(item.subtasks) && item.subtasks.length) {
+    const total = item.subtasks.length;
+    const doneN = item.subtasks.filter(s => s.done).length;
+    const pct = Math.round((doneN / total) * 100);
+    const progress = document.createElement("div");
+    progress.className = "priority-progress";
+    const bar = document.createElement("div");
+    bar.className = "priority-progress-bar";
+    const fill = document.createElement("div");
+    fill.className = "priority-progress-fill" + (doneN === total ? " complete" : "");
+    fill.style.width = pct + "%";
+    bar.appendChild(fill);
+    progress.appendChild(bar);
+    const pLabel = document.createElement("span");
+    pLabel.className = "priority-progress-label";
+    pLabel.textContent = `${doneN}/${total}`;
+    progress.appendChild(pLabel);
+    main.appendChild(progress);
+  }
+
+  row.appendChild(main);
 
   const label = document.createElement("div");
   label.className = "done-label";
@@ -5440,8 +5492,10 @@ function renderPriorityTrash() {
 
   list.forEach((entry, idx) => {
     const row = document.createElement("div");
-    row.className = "event-row";
-    row.style.cursor = "default";
+    row.className = "event-row clickable";
+    row.style.cursor = "pointer";
+    row.title = "Clique para ver detalhes";
+    row.onclick = () => openPriorityDetail(entry);
 
     const info = document.createElement("div");
     info.className = "info";
@@ -5461,7 +5515,8 @@ function renderPriorityTrash() {
     const restore = document.createElement("button");
     restore.className = "neon";
     restore.textContent = "Restaurar";
-    restore.onclick = () => {
+    restore.onclick = (e) => {
+      e.stopPropagation();
       priorities[activePerson] = normalizePersonPriorities(priorities[activePerson]);
       const targetDay = entry.dayKey && DAYS.some(x => x.key === entry.dayKey)
         ? entry.dayKey
@@ -5471,7 +5526,12 @@ function renderPriorityTrash() {
         id: entry.id || uid(),
         text: entry.text || "",
         done: !!entry.done,
-        finishDate: entry.finishDate || ""
+        finishDate: entry.finishDate || "",
+        description: entry.description || "",
+        photos: Array.isArray(entry.photos) ? entry.photos.slice() : [],
+        subtasks: Array.isArray(entry.subtasks)
+          ? entry.subtasks.map(s => ({ ...s }))
+          : []
       });
       deletedPriorities[activePerson].splice(idx, 1);
       savePriorities();
@@ -5484,7 +5544,8 @@ function renderPriorityTrash() {
     const purge = document.createElement("button");
     purge.className = "danger";
     purge.textContent = "Excluir";
-    purge.onclick = () => {
+    purge.onclick = (e) => {
+      e.stopPropagation();
       if (!confirm("Excluir permanentemente esta prioridade do histórico?")) return;
       deletedPriorities[activePerson].splice(idx, 1);
       saveDeletedPriorities();
