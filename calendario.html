@@ -1739,6 +1739,15 @@
   .priority-item .del-prio:hover { background: #fff2f2; }
   .priority-item.clickable { cursor: pointer; }
   .priority-item.clickable:hover { background: #f9fafb; }
+  .priority-item[draggable="true"] { cursor: grab; }
+  .priority-item[draggable="true"]:active { cursor: grabbing; }
+  .priority-item.dragging { opacity: 0.4; }
+  .day-section.drag-over {
+    background: #eef6ff;
+    outline: 2px dashed #7fb0ff;
+    outline-offset: -2px;
+    border-radius: 10px;
+  }
 
   /* semana anterior (colapsável) */
   .prev-week-section {
@@ -1793,13 +1802,48 @@
   .prev-week-section.collapsed .prev-week-body { display: none; }
   .prev-week-body {
     padding: 0 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .prev-week-block {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 12px;
   }
-  @media (max-width: 1200px) { .prev-week-body { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-  @media (max-width: 780px)  { .prev-week-body { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 520px)  { .prev-week-body { grid-template-columns: 1fr; } }
+  .prev-week-block .prev-week-subheader {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    padding: 8px 2px 4px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .prev-week-count-small { font-variant-numeric: tabular-nums; }
+  @media (max-width: 1200px) { .prev-week-block { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 780px)  { .prev-week-block { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 520px)  { .prev-week-block { grid-template-columns: 1fr; } }
+  .prev-week-more-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--soft);
+    border: 1px dashed #c9c9d1;
+    border-radius: 10px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .prev-week-more-btn:hover { background: #ececef; color: var(--black); }
+  .prev-week-empty {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12.5px;
+    padding: 12px;
+  }
   .priority-main {
     flex: 1; min-width: 0;
     display: flex; flex-direction: column; gap: 4px;
@@ -4337,6 +4381,28 @@ function renderPriorities() {
     const section = document.createElement("div");
     section.className = "day-section" + (day.key === todayKey ? " today" : "");
 
+    // drop target: aceita prioridade arrastada de outro dia
+    section.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer.types.includes("text/plain")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      section.classList.add("drag-over");
+    });
+    section.addEventListener("dragleave", (e) => {
+      if (e.currentTarget.contains(e.relatedTarget)) return;
+      section.classList.remove("drag-over");
+    });
+    section.addEventListener("drop", (e) => {
+      e.preventDefault();
+      section.classList.remove("drag-over");
+      try {
+        const data = JSON.parse(e.dataTransfer.getData("text/plain"));
+        if (data && data.itemId) {
+          movePriorityToDay(data.personId, data.itemId, data.fromDayKey, day.key);
+        }
+      } catch {}
+    });
+
     const header = document.createElement("div");
     header.className = "day-header";
     const h = document.createElement("h3");
@@ -4393,16 +4459,41 @@ function renderPriorities() {
   if (prev) box.appendChild(prev);
 }
 
+let prevWeeksShown = 1;
+
+function weekRangeNBack(n) {
+  const { startKey } = currentWeekRange();
+  const [y, m, d] = startKey.split("-").map(Number);
+  const thisMonday = new Date(y, m - 1, d);
+  const start = new Date(thisMonday);
+  start.setDate(thisMonday.getDate() - 7 * n);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { startKey: keyOf(start), endKey: keyOf(end) };
+}
+function dateInRange(dateKey, range) {
+  if (!dateKey) return false;
+  return dateKey >= range.startKey && dateKey <= range.endKey;
+}
+
 function buildPreviousWeekSection(personData) {
-  const byDay = {};
-  let total = 0, done = 0;
-  DAYS.forEach(day => {
-    const list = (personData[day.key] || []).filter(item => isInPreviousWeek(item.finishDate));
-    byDay[day.key] = list;
-    total += list.length;
-    done += list.filter(i => i.done).length;
-  });
-  if (total === 0) return null;
+  const weeks = [];
+  let grandTotal = 0, grandDone = 0;
+  for (let w = 1; w <= prevWeeksShown; w++) {
+    const range = weekRangeNBack(w);
+    const byDay = {};
+    let wTotal = 0, wDone = 0;
+    DAYS.forEach(day => {
+      const list = (personData[day.key] || []).filter(item => dateInRange(item.finishDate, range));
+      byDay[day.key] = list;
+      wTotal += list.length;
+      wDone += list.filter(i => i.done).length;
+    });
+    weeks.push({ n: w, range, byDay, total: wTotal, done: wDone });
+    grandTotal += wTotal;
+    grandDone += wDone;
+  }
+  if (grandTotal === 0 && prevWeeksShown === 1) return null;
 
   const wrap = document.createElement("div");
   wrap.className = "prev-week-section";
@@ -4413,12 +4504,10 @@ function buildPreviousWeekSection(personData) {
   header.className = "prev-week-header";
   const title = document.createElement("div");
   title.className = "prev-week-title";
-  const { startKey, endKey } = previousWeekRange();
-  const fmt = k => k.split("-").reverse().slice(0, 2).join("/");
-  title.innerHTML = `<span>Semana anterior</span><span class="prev-week-range">${fmt(startKey)}–${fmt(endKey)}</span>`;
+  title.innerHTML = `<span>Semanas anteriores</span><span class="prev-week-range">últimas ${prevWeeksShown} semana${prevWeeksShown > 1 ? "s" : ""}</span>`;
   const count = document.createElement("span");
   count.className = "prev-week-count";
-  count.textContent = `${done}/${total} feitas`;
+  count.textContent = `${grandDone}/${grandTotal} feitas`;
   const toggle = document.createElement("span");
   toggle.className = "prev-week-toggle";
   toggle.textContent = "▾";
@@ -4434,57 +4523,134 @@ function buildPreviousWeekSection(personData) {
 
   const body = document.createElement("div");
   body.className = "prev-week-body";
-  DAYS.forEach(day => {
-    const list = byDay[day.key];
-    if (!list.length) return;
-    const section = document.createElement("div");
-    section.className = "day-section";
-    const dayHeader = document.createElement("div");
-    dayHeader.className = "day-header";
-    const h = document.createElement("h3");
-    h.textContent = day.label;
-    dayHeader.appendChild(h);
-    const meta = document.createElement("div");
-    meta.className = "day-meta";
-    const c = document.createElement("span");
-    c.className = "day-count";
-    const dn = list.filter(i => i.done).length;
-    c.textContent = `${dn}/${list.length} feitas`;
-    meta.appendChild(c);
-    dayHeader.appendChild(meta);
-    section.appendChild(dayHeader);
 
-    const listEl = document.createElement("div");
-    listEl.className = "day-list";
-    list.forEach(item => {
-      listEl.appendChild(buildPriorityItem(item, personData[day.key], activePerson, day.key));
+  const fmt = k => k.split("-").reverse().slice(0, 2).join("/");
+  weeks.forEach(wk => {
+    if (wk.total === 0) return;
+    const block = document.createElement("div");
+    block.className = "prev-week-block";
+    const sub = document.createElement("div");
+    sub.className = "prev-week-subheader";
+    sub.innerHTML = `<span>${fmt(wk.range.startKey)}–${fmt(wk.range.endKey)}</span><span class="prev-week-count-small">${wk.done}/${wk.total}</span>`;
+    block.appendChild(sub);
+    DAYS.forEach(day => {
+      const list = wk.byDay[day.key];
+      if (!list.length) return;
+      const section = document.createElement("div");
+      section.className = "day-section";
+      const dayHeader = document.createElement("div");
+      dayHeader.className = "day-header";
+      const h = document.createElement("h3");
+      h.textContent = day.label;
+      dayHeader.appendChild(h);
+      const meta = document.createElement("div");
+      meta.className = "day-meta";
+      const c = document.createElement("span");
+      c.className = "day-count";
+      const dn = list.filter(i => i.done).length;
+      c.textContent = `${dn}/${list.length} feitas`;
+      meta.appendChild(c);
+      dayHeader.appendChild(meta);
+      section.appendChild(dayHeader);
+
+      const listEl = document.createElement("div");
+      listEl.className = "day-list";
+      list.forEach(item => {
+        listEl.appendChild(buildPriorityItem(item, personData[day.key], activePerson, day.key, { draggable: false, showCheck: false }));
+      });
+      section.appendChild(listEl);
+      block.appendChild(section);
     });
-    section.appendChild(listEl);
-    body.appendChild(section);
+    body.appendChild(block);
   });
-  wrap.appendChild(body);
 
+  if (grandTotal === 0) {
+    const empty = document.createElement("div");
+    empty.className = "prev-week-empty";
+    empty.textContent = "Nenhuma prioridade nas últimas " + prevWeeksShown + " semana" + (prevWeeksShown > 1 ? "s" : "") + ".";
+    body.appendChild(empty);
+  }
+
+  if (prevWeeksShown < 26) {
+    const moreBtn = document.createElement("button");
+    moreBtn.className = "prev-week-more-btn";
+    moreBtn.textContent = "+ Ver mais semanas";
+    moreBtn.onclick = (e) => {
+      e.stopPropagation();
+      prevWeeksShown++;
+      renderPriorities();
+    };
+    body.appendChild(moreBtn);
+  }
+
+  wrap.appendChild(body);
   return wrap;
 }
 
-function buildPriorityItem(item, sourceList, personId, dayKey) {
+function movePriorityToDay(personId, itemId, fromDayKey, toDayKey) {
+  if (fromDayKey === toDayKey) return;
+  priorities[personId] = normalizePersonPriorities(priorities[personId]);
+  const fromList = priorities[personId][fromDayKey] || [];
+  const idx = fromList.findIndex(p => p.id === itemId);
+  if (idx < 0) return;
+
+  const { startKey } = currentWeekRange();
+  const dayIdx = DAYS.findIndex(d => d.key === toDayKey);
+  const [yy, mm, dd] = startKey.split("-").map(Number);
+  const dateForDay = new Date(yy, mm - 1, dd + dayIdx);
+  const newFinishDate = keyOf(dateForDay);
+
+  const [item] = fromList.splice(idx, 1);
+  item.finishDate = newFinishDate;
+  priorities[personId][toDayKey] = priorities[personId][toDayKey] || [];
+  priorities[personId][toDayKey].push(item);
+  savePriorities();
+
+  // Se a prioridade é ligada a uma tarefa, atualiza a data da tarefa também
+  const linked = findTaskByPriorityId(itemId);
+  if (linked) {
+    linked.ev.finishDate = newFinishDate;
+    saveEvents();
+    render();
+  }
+
+  renderPriorities();
+}
+
+function buildPriorityItem(item, sourceList, personId, dayKey, opts) {
+  const draggable = !opts || opts.draggable !== false;
+  const showCheck = !opts || opts.showCheck !== false;
   const row = document.createElement("div");
   row.className = "priority-item clickable" + (item.done ? " done" : "");
-  row.title = "Clique para ver detalhes";
+  row.title = draggable ? "Clique para ver detalhes · arraste pra mover de dia" : "Clique para ver detalhes";
   row.onclick = () => openPriorityDetail(item);
 
-  const check = document.createElement("div");
-  check.className = "check";
-  check.textContent = "✓";
-  check.title = item.done ? "Desmarcar" : "Marcar como feito";
-  check.onclick = (e) => {
-    e.stopPropagation();
-    item.done = !item.done;
-    savePriorities();
-    syncTaskStatusFromPriority(item);
-    renderPriorities();
-  };
-  row.appendChild(check);
+  if (draggable) {
+    row.draggable = true;
+    row.addEventListener("dragstart", (e) => {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", JSON.stringify({
+        itemId: item.id, personId, fromDayKey: dayKey
+      }));
+      row.classList.add("dragging");
+    });
+    row.addEventListener("dragend", () => row.classList.remove("dragging"));
+  }
+
+  if (showCheck) {
+    const check = document.createElement("div");
+    check.className = "check";
+    check.textContent = "✓";
+    check.title = item.done ? "Desmarcar" : "Marcar como feito";
+    check.onclick = (e) => {
+      e.stopPropagation();
+      item.done = !item.done;
+      savePriorities();
+      syncTaskStatusFromPriority(item);
+      renderPriorities();
+    };
+    row.appendChild(check);
+  }
 
   const main = document.createElement("div");
   main.className = "priority-main";
@@ -4546,6 +4712,19 @@ let priorityDetailDraft = null;     // { description, photos[] } rascunho
 
 function openPriorityDetail(item, opts) {
   const fromTrash = !!(opts && opts.fromTrash);
+
+  // Se a prioridade está ligada a uma tarefa (e não veio do histórico),
+  // abre direto o modal completo da tarefa — sincronização bidirecional já garante
+  // que as edições voltam pra prioridade.
+  if (!fromTrash) {
+    const linked = findTaskByPriorityId(item.id);
+    if (linked) {
+      activeDayKey = linked.dayKey;
+      openEdit(linked.ev);
+      return;
+    }
+  }
+
   priorityDetailEditing = item;
   priorityDetailDraft = {
     text: item.text || "",
