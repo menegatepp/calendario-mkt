@@ -956,6 +956,76 @@
   }
   .sheet-actions { display: flex; gap: 8px; }
   .title-with-icon { display: flex; align-items: center; gap: 8px; }
+
+  /* reports */
+  .reports-week-range {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .reports-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+    min-height: 40px;
+  }
+  .report-section-label {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 12px 0 4px;
+  }
+  .report-section-label:first-child { margin-top: 0; }
+  .report-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--soft);
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .report-item.auto { background: #eef7f0; }
+  .report-item.auto::before {
+    content: "✓";
+    color: #2d8a46;
+    font-weight: 700;
+    flex: none;
+  }
+  .report-item .report-text { flex: 1; }
+  .report-item .report-del {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+    cursor: pointer;
+    border-radius: 4px;
+    opacity: 0.6;
+  }
+  .report-item .report-del:hover { opacity: 1; background: #fff2f2; color: #b00020; }
+  .report-empty {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 20px 0;
+  }
+  .reports-add-row {
+    display: flex;
+    gap: 8px;
+  }
+  .reports-add-row input {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    background: var(--soft);
+    font-size: 13px;
+  }
   #priorityNotesBtn {
     background: var(--black);
     color: #fff;
@@ -2035,6 +2105,7 @@
   <button id="navCalendar" class="active">Calendário</button>
   <button id="navCreators">Creators</button>
   <button id="navMkt">Controle MKT</button>
+  <button id="navReports">Reports</button>
 </div>
 
 <div id="calendarView">
@@ -2098,6 +2169,23 @@
     </div>
     <div class="sheet-table-wrap">
       <table class="sheet-table" id="mktTable"></table>
+    </div>
+  </div>
+</div>
+
+<div id="reportsView" style="display:none">
+  <div class="sheets-tabs-row">
+    <div class="sheets-tabs" id="reportsTabs"></div>
+  </div>
+  <div class="sheet-card">
+    <div class="sheet-toolbar">
+      <h2 id="reportsTitle">—</h2>
+      <span class="reports-week-range" id="reportsWeekRange"></span>
+    </div>
+    <div id="reportsList" class="reports-list"></div>
+    <div class="reports-add-row">
+      <input type="text" id="reportInput" placeholder="Adicionar item ao report desta semana..." />
+      <button class="primary" id="reportAddBtn">+ Adicionar</button>
     </div>
   </div>
 </div>
@@ -4240,13 +4328,15 @@ function setView(view) {
     calendar: document.getElementById("calendarView"),
     creators: document.getElementById("creatorsView"),
     priorities: document.getElementById("prioritiesView"),
-    mkt: document.getElementById("mktView")
+    mkt: document.getElementById("mktView"),
+    reports: document.getElementById("reportsView")
   };
   const btns = {
     calendar: document.getElementById("navCalendar"),
     creators: document.getElementById("navCreators"),
     priorities: document.getElementById("navPriorities"),
-    mkt: document.getElementById("navMkt")
+    mkt: document.getElementById("navMkt"),
+    reports: document.getElementById("navReports")
   };
   Object.values(views).forEach(v => v.style.display = "none");
   Object.values(btns).forEach(b => b.classList.remove("active"));
@@ -4257,6 +4347,7 @@ function setView(view) {
   if (view === "creators") { renderSheetTabs(); renderSheet(); }
   else if (view === "priorities") { renderPriorityTabs(); renderPriorities(); }
   else if (view === "mkt") { renderMktTabs(); renderMktSheet(); }
+  else if (view === "reports") { renderReportTabs(); renderReports(); }
   else { render(); }
 }
 
@@ -4264,6 +4355,7 @@ document.getElementById("navCalendar").onclick = () => setView("calendar");
 document.getElementById("navCreators").onclick = () => setView("creators");
 document.getElementById("navPriorities").onclick = () => setView("priorities");
 document.getElementById("navMkt").onclick = () => setView("mkt");
+document.getElementById("navReports").onclick = () => setView("reports");
 
 /* =========================================================
    PRIORIDADES — listas editáveis por pessoa
@@ -6719,6 +6811,160 @@ function restoreFromTrash(idx) {
   renderSheet();
   renderTrash();
 }
+
+/* =========================================================
+   REPORTS — resumo semanal por pessoa (auto + manual)
+   ========================================================= */
+const REPORTS_MANUAL_KEY = "reports-manual-v1";
+let activeReportPerson = "amanda";
+let reportsManual = (function(){
+  const s = storageGet(REPORTS_MANUAL_KEY, null);
+  return (s && typeof s === "object") ? s : {};
+})();
+function saveReportsManual() { storageSet(REPORTS_MANUAL_KEY, reportsManual); }
+
+function reportWeekRange() {
+  return currentWeekRange();
+}
+
+function getAutoReportItems(personId) {
+  const { startKey, endKey } = reportWeekRange();
+  const items = [];
+  const data = priorities[personId] || {};
+  for (const dk in data) {
+    const list = data[dk];
+    if (!Array.isArray(list)) continue;
+    for (const p of list) {
+      if (!p.done) continue;
+      const fd = p.finishDate;
+      if (!fd || fd < startKey || fd > endKey) continue;
+      items.push({ key: "p-" + p.id, text: p.text || "(sem título)" });
+    }
+  }
+  const archived = deletedPriorities[personId] || [];
+  for (const d of archived) {
+    if (!d.done) continue;
+    const fd = d.finishDate;
+    if (!fd || fd < startKey || fd > endKey) continue;
+    items.push({ key: "a-" + d.id, text: d.text || "(sem título)" });
+  }
+  // Dedupe por texto
+  const seen = new Set();
+  return items.filter(i => {
+    const k = (i.text || "").trim().toLowerCase();
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+function getManualReportItems(personId) {
+  const { startKey } = reportWeekRange();
+  const personMap = reportsManual[personId] || {};
+  return personMap[startKey] || [];
+}
+
+function addManualReportItem(personId, text) {
+  const { startKey } = reportWeekRange();
+  reportsManual[personId] = reportsManual[personId] || {};
+  reportsManual[personId][startKey] = reportsManual[personId][startKey] || [];
+  reportsManual[personId][startKey].push({ id: uid(), text });
+  saveReportsManual();
+}
+
+function removeManualReportItem(personId, itemId) {
+  const { startKey } = reportWeekRange();
+  const list = (reportsManual[personId] || {})[startKey] || [];
+  const idx = list.findIndex(i => i.id === itemId);
+  if (idx < 0) return;
+  list.splice(idx, 1);
+  saveReportsManual();
+}
+
+function renderReportTabs() {
+  const tabs = document.getElementById("reportsTabs");
+  tabs.innerHTML = "";
+  PEOPLE.forEach(p => {
+    const b = document.createElement("button");
+    b.textContent = p.label;
+    if (p.id === activeReportPerson) b.classList.add("active");
+    b.onclick = () => { activeReportPerson = p.id; renderReportTabs(); renderReports(); };
+    tabs.appendChild(b);
+  });
+}
+
+function renderReports() {
+  const person = PEOPLE.find(p => p.id === activeReportPerson);
+  document.getElementById("reportsTitle").textContent = "Report · " + (person ? person.label : "");
+  const { startKey, endKey } = reportWeekRange();
+  const fmt = k => k.split("-").reverse().slice(0, 2).join("/");
+  document.getElementById("reportsWeekRange").textContent = `Semana ${fmt(startKey)}–${fmt(endKey)}`;
+
+  const box = document.getElementById("reportsList");
+  box.innerHTML = "";
+  const auto = getAutoReportItems(activeReportPerson);
+  const manual = getManualReportItems(activeReportPerson);
+
+  if (auto.length) {
+    const lbl = document.createElement("div");
+    lbl.className = "report-section-label";
+    lbl.textContent = "Prioridades feitas nesta semana";
+    box.appendChild(lbl);
+    auto.forEach(i => {
+      const row = document.createElement("div");
+      row.className = "report-item auto";
+      const t = document.createElement("span");
+      t.className = "report-text";
+      t.textContent = i.text;
+      row.appendChild(t);
+      box.appendChild(row);
+    });
+  }
+  if (manual.length) {
+    const lbl = document.createElement("div");
+    lbl.className = "report-section-label";
+    lbl.textContent = "Adicionados manualmente";
+    box.appendChild(lbl);
+    manual.forEach(i => {
+      const row = document.createElement("div");
+      row.className = "report-item manual";
+      const t = document.createElement("span");
+      t.className = "report-text";
+      t.textContent = i.text;
+      row.appendChild(t);
+      const del = document.createElement("button");
+      del.className = "report-del";
+      del.textContent = "×";
+      del.title = "Remover";
+      del.onclick = () => {
+        removeManualReportItem(activeReportPerson, i.id);
+        renderReports();
+      };
+      row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+  if (!auto.length && !manual.length) {
+    const empty = document.createElement("div");
+    empty.className = "report-empty";
+    empty.textContent = "Nenhum item ainda. Marque prioridades como feitas nesta semana ou adicione itens abaixo.";
+    box.appendChild(empty);
+  }
+}
+
+function addReportFromInput() {
+  const input = document.getElementById("reportInput");
+  const v = (input.value || "").trim();
+  if (!v) return;
+  addManualReportItem(activeReportPerson, v);
+  input.value = "";
+  renderReports();
+  input.focus();
+}
+document.getElementById("reportAddBtn").onclick = addReportFromInput;
+document.getElementById("reportInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); addReportFromInput(); }
+});
 
 })(); // end main()
 </script>
