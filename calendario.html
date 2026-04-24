@@ -958,6 +958,27 @@
   .title-with-icon { display: flex; align-items: center; gap: 8px; }
 
   /* reports */
+  .report-reminder-alert {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 18px;
+    background: linear-gradient(135deg, #fff8e1 0%, #fff3b0 100%);
+    border: 1px solid #f0d97f;
+    border-radius: 14px;
+    margin-bottom: 14px;
+  }
+  .report-reminder-alert .report-reminder-text {
+    font-size: 14px;
+    font-weight: 700;
+    color: #5a4a0b;
+  }
+  .report-reminder-alert button {
+    padding: 6px 18px;
+  }
+
   .reports-week-range {
     font-size: 12px;
     color: var(--muted);
@@ -4639,6 +4660,46 @@ function dedupePriorities() {
   if (changed) savePriorities();
 }
 
+const REPORT_ALERT_KEY = "report-alert-dismissed-v1";
+let reportAlertDismissed = (function(){
+  const s = storageGet(REPORT_ALERT_KEY, null);
+  return (s && typeof s === "object") ? s : {};
+})();
+function isReportReminderTime() {
+  const now = new Date();
+  const { startKey } = currentWeekRange();
+  const [y, m, d] = startKey.split("-").map(Number);
+  const thisMonday = new Date(y, m - 1, d);
+  const thisFriday = new Date(thisMonday);
+  thisFriday.setDate(thisMonday.getDate() + 4);
+  thisFriday.setHours(17, 30, 0, 0);
+  const nextMonday = new Date(thisMonday);
+  nextMonday.setDate(thisMonday.getDate() + 7);
+  return now >= thisFriday && now < nextMonday;
+}
+function buildReportReminderAlert() {
+  if (!isReportReminderTime()) return null;
+  const weekKey = currentWeekRange().startKey;
+  if (reportAlertDismissed[activePerson] === weekKey) return null;
+
+  const card = document.createElement("div");
+  card.className = "report-reminder-alert";
+  const txt = document.createElement("span");
+  txt.className = "report-reminder-text";
+  txt.textContent = "Fez o report?";
+  const btn = document.createElement("button");
+  btn.className = "primary";
+  btn.textContent = "Sim";
+  btn.onclick = () => {
+    reportAlertDismissed[activePerson] = weekKey;
+    storageSet(REPORT_ALERT_KEY, reportAlertDismissed);
+    renderPriorities();
+  };
+  card.appendChild(txt);
+  card.appendChild(btn);
+  return card;
+}
+
 function renderPriorities() {
   dedupePriorities();
   const personData = priorities[activePerson] = normalizePersonPriorities(priorities[activePerson]);
@@ -4646,6 +4707,9 @@ function renderPriorities() {
   box.innerHTML = "";
   const person = PEOPLE.find(p => p.id === activePerson);
   document.getElementById("prioritiesTitle").textContent = "Prioridades de " + person.label;
+
+  const reportAlert = buildReportReminderAlert();
+  if (reportAlert) box.appendChild(reportAlert);
 
   if (activePerson === "amanda") {
     const overdue = buildOverdueAlert();
