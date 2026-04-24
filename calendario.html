@@ -955,6 +955,33 @@
     letter-spacing: -0.01em;
   }
   .sheet-actions { display: flex; gap: 8px; }
+  .title-with-icon { display: flex; align-items: center; gap: 4px; }
+  .notes-icon-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    line-height: 1;
+    opacity: 0.7;
+    transition: opacity 0.15s, background 0.15s;
+  }
+  .notes-icon-btn:hover { background: var(--soft); opacity: 1; }
+  #notesTextarea {
+    width: 100%;
+    min-height: 420px;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 14px;
+    padding: 14px 16px;
+    line-height: 1.5;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #fff;
+    outline: none;
+  }
+  #notesTextarea:focus { border-color: #c9c9d1; }
 
   .sheet-filter {
     display: flex;
@@ -2169,7 +2196,10 @@
   </div>
   <div class="sheet-card">
     <div class="sheet-toolbar">
-      <h2 id="prioritiesTitle">—</h2>
+      <div class="title-with-icon">
+        <h2 id="prioritiesTitle">—</h2>
+        <button id="priorityNotesBtn" class="notes-icon-btn" title="Anotações desta aba">📝</button>
+      </div>
       <div class="sheet-actions">
         <button id="priorityHistoryBtn" title="Histórico de prioridades excluídas">Histórico</button>
         <button id="clearDonePriorityBtn" class="danger" title="Remover prioridades marcadas como feitas em todos os dias">Limpar feitas</button>
@@ -2181,6 +2211,24 @@
 
 <!-- Modal: histórico de prioridades excluídas -->
 <!-- Modal: detalhes de uma prioridade (título + descrição + fotos) -->
+<!-- Modal: anotações por aba de prioridade -->
+<div id="notesOverlay" class="overlay">
+  <div class="modal">
+    <header>
+      <h1 id="notesModalTitle">Anotações</h1>
+    </header>
+    <div class="body">
+      <textarea id="notesTextarea" placeholder="Suas anotações aqui…"></textarea>
+    </div>
+    <div class="foot">
+      <span class="hint">Salva automaticamente enquanto você digita.</span>
+      <div class="right">
+        <button id="notesCloseBtn">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="priorityDetailOverlay" class="overlay">
   <div class="modal">
     <header>
@@ -6052,6 +6100,34 @@ function buildPostouSummary() {
 
   return card;
 }
+
+/* ---------- Anotações por aba (priority notes) ---------- */
+const PRIORITY_NOTES_KEY = "priority-notes-v1";
+let priorityNotes = (function() {
+  const s = storageGet(PRIORITY_NOTES_KEY, null);
+  return (s && typeof s === "object") ? s : {};
+})();
+let notesCurrentPersonId = null;
+
+function openNotesModal(personId) {
+  notesCurrentPersonId = personId;
+  const person = PEOPLE.find(p => p.id === personId);
+  document.getElementById("notesModalTitle").textContent = "Anotações" + (person ? " · " + person.label : "");
+  document.getElementById("notesTextarea").value = priorityNotes[personId] || "";
+  document.getElementById("notesOverlay").classList.add("show");
+  setTimeout(() => document.getElementById("notesTextarea").focus(), 0);
+}
+function closeNotesModal() {
+  document.getElementById("notesOverlay").classList.remove("show");
+  notesCurrentPersonId = null;
+}
+document.getElementById("priorityNotesBtn").onclick = () => openNotesModal(activePerson);
+document.getElementById("notesCloseBtn").onclick = closeNotesModal;
+document.getElementById("notesTextarea").addEventListener("input", (e) => {
+  if (!notesCurrentPersonId) return;
+  priorityNotes[notesCurrentPersonId] = e.target.value;
+  storageSet(PRIORITY_NOTES_KEY, priorityNotes);
+});
 
 document.getElementById("priorityHistoryBtn").onclick = () => {
   renderPriorityTrash();
