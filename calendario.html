@@ -4260,6 +4260,58 @@ const DAYS = [
 let activePerson = "amanda";
 let priorities = loadPriorities();
 
+// Rollover automático: na segunda de uma nova semana, prioridades da semana anterior não marcadas vão pra essa segunda
+const ROLLOVER_KEY = "last-rollover-monday-v1";
+function runRolloverIfDue() {
+  const { startKey: thisMonKey } = currentWeekRange();
+  if (storageGet(ROLLOVER_KEY, null) === thisMonKey) return;
+
+  const [y, m, d] = thisMonKey.split("-").map(Number);
+  const thisMonday = new Date(y, m - 1, d);
+  const prevMonday = new Date(thisMonday);
+  prevMonday.setDate(thisMonday.getDate() - 7);
+  const prevSunday = new Date(thisMonday);
+  prevSunday.setDate(thisMonday.getDate() - 1);
+  const prevMonKey = keyOf(prevMonday);
+  const prevSunKey = keyOf(prevSunday);
+
+  const itemsToMove = [];
+  for (const personId in priorities) {
+    const data = priorities[personId];
+    if (!data || typeof data !== "object") continue;
+    for (const dk in data) {
+      const list = data[dk];
+      if (!Array.isArray(list)) continue;
+      for (const item of list) {
+        if (item.done) continue;
+        const fd = item.finishDate;
+        if (!fd || fd < prevMonKey || fd > prevSunKey) continue;
+        itemsToMove.push({ personId, fromDk: dk, item });
+      }
+    }
+  }
+
+  for (const { personId, fromDk, item } of itemsToMove) {
+    item.finishDate = thisMonKey;
+    if (fromDk !== "segunda") {
+      const fromList = priorities[personId][fromDk];
+      const toList = priorities[personId].segunda = priorities[personId].segunda || [];
+      const idx = fromList.indexOf(item);
+      if (idx >= 0) fromList.splice(idx, 1);
+      toList.push(item);
+    }
+    const linked = findTaskByPriorityId(item.id);
+    if (linked) linked.ev.finishDate = thisMonKey;
+  }
+
+  if (itemsToMove.length > 0) {
+    savePriorities();
+    saveEvents();
+  }
+  storageSet(ROLLOVER_KEY, thisMonKey);
+}
+runRolloverIfDue();
+
 // Retro-liga prioridades antigas a suas tarefas (pra que clicar abra o modal da tarefa)
 (function migrateLinkPrioritiesToTasks() {
   const norm = s => (s || "").trim().toLowerCase();
