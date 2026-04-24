@@ -3324,6 +3324,38 @@ function syncTaskStatusFromPriority(priorityItem) {
   }
 }
 
+function convertPriorityToTask(item) {
+  const found = findPriorityById(item.id);
+  if (!found) return null;
+  const person = PEOPLE.find(p => p.id === found.personId);
+  const label = person ? person.label : null;
+
+  const finishDate = item.finishDate || keyOf(new Date());
+  const dayKey = finishDate;
+  events[dayKey] = events[dayKey] || [];
+
+  const newEv = {
+    id: uid(),
+    title: item.text || "",
+    description: item.description || "",
+    type: "",
+    status: item.done ? "concluida" : "pendente",
+    responsible: label || "",
+    responsibles: label ? [label] : [],
+    finishDate,
+    color: COLORS[0],
+    photo: (Array.isArray(item.photos) && item.photos.length) ? item.photos[0] : null,
+    subtasks: Array.isArray(item.subtasks)
+      ? item.subtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done, responsible: s.responsible || null }))
+      : [],
+    priorityIds: { [found.personId]: item.id }
+  };
+  events[dayKey].push(newEv);
+  saveEvents();
+  render();
+  return { ev: newEv, dayKey, personId: found.personId };
+}
+
 function findTaskByPriorityId(priorityId) {
   for (const dayKey in events) {
     const list = events[dayKey];
@@ -4761,7 +4793,8 @@ function openPriorityDetail(item, opts) {
   // abre direto o modal completo da tarefa — sincronização bidirecional já garante
   // que as edições voltam pra prioridade.
   if (!fromTrash) {
-    const linked = findTaskByPriorityId(item.id);
+    let linked = findTaskByPriorityId(item.id);
+    if (!linked) linked = convertPriorityToTask(item);
     if (linked) {
       activeDayKey = linked.dayKey;
       openEdit(linked.ev);
