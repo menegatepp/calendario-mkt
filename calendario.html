@@ -4230,6 +4230,16 @@ let priorities = loadPriorities();
 
 // Retro-liga prioridades antigas a suas tarefas (pra que clicar abra o modal da tarefa)
 (function migrateLinkPrioritiesToTasks() {
+  const norm = s => (s || "").trim().toLowerCase();
+  // IDs já referenciados por alguma tarefa (pra não roubar um link existente)
+  const claimed = new Set();
+  for (const dk in events) {
+    const list = events[dk];
+    if (!Array.isArray(list)) continue;
+    for (const ev of list) {
+      if (ev.priorityIds) for (const pid in ev.priorityIds) claimed.add(ev.priorityIds[pid]);
+    }
+  }
   let linked = 0;
   for (const dk in events) {
     const list = events[dk];
@@ -4242,16 +4252,18 @@ let priorities = loadPriorities();
         const pid = personIdFromLabel(r);
         if (ev.priorityIds[pid] && findPriorityById(ev.priorityIds[pid])) continue;
         if (!priorities[pid]) continue;
-        const expectedText = ev.title || "(sem título)";
+        const expectedText = norm(ev.title);
+        if (!expectedText) continue;
         let match = null;
         for (const pdk in priorities[pid]) {
           const pList = priorities[pid][pdk];
           if (!Array.isArray(pList)) continue;
-          match = pList.find(p => p.text === expectedText);
+          match = pList.find(p => norm(p.text) === expectedText && !claimed.has(p.id));
           if (match) break;
         }
         if (match) {
           ev.priorityIds[pid] = match.id;
+          claimed.add(match.id);
           linked++;
         }
       }
