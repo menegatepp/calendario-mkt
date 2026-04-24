@@ -4647,18 +4647,6 @@ function buildPreviousWeekSection(personData) {
     body.appendChild(empty);
   }
 
-  if (prevWeeksShown < 26) {
-    const moreBtn = document.createElement("button");
-    moreBtn.className = "prev-week-more-btn";
-    moreBtn.textContent = "+ Ver mais semanas";
-    moreBtn.onclick = (e) => {
-      e.stopPropagation();
-      prevWeeksShown++;
-      renderPriorities();
-    };
-    body.appendChild(moreBtn);
-  }
-
   wrap.appendChild(body);
   return wrap;
 }
