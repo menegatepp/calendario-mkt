@@ -4228,6 +4228,38 @@ const DAYS = [
 let activePerson = "amanda";
 let priorities = loadPriorities();
 
+// Retro-liga prioridades antigas a suas tarefas (pra que clicar abra o modal da tarefa)
+(function migrateLinkPrioritiesToTasks() {
+  let linked = 0;
+  for (const dk in events) {
+    const list = events[dk];
+    if (!Array.isArray(list)) continue;
+    for (const ev of list) {
+      const resps = getResponsibles(ev);
+      if (!resps.length) continue;
+      ev.priorityIds = ev.priorityIds || {};
+      for (const r of resps) {
+        const pid = personIdFromLabel(r);
+        if (ev.priorityIds[pid] && findPriorityById(ev.priorityIds[pid])) continue;
+        if (!priorities[pid]) continue;
+        const expectedText = ev.title || "(sem título)";
+        let match = null;
+        for (const pdk in priorities[pid]) {
+          const pList = priorities[pid][pdk];
+          if (!Array.isArray(pList)) continue;
+          match = pList.find(p => p.text === expectedText);
+          if (match) break;
+        }
+        if (match) {
+          ev.priorityIds[pid] = match.id;
+          linked++;
+        }
+      }
+    }
+  }
+  if (linked > 0) saveEvents();
+})();
+
 function emptyPersonPriorities() {
   const o = {};
   DAYS.forEach(d => o[d.key] = []);
