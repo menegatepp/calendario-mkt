@@ -627,6 +627,17 @@
     color: var(--black);
   }
   .sheets-tabs button.active:hover { background: var(--neon-dark); }
+  .sheets-tabs button .tab-fav {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 13px;
+    opacity: 0.35;
+    cursor: pointer;
+    transition: opacity 0.12s, color 0.12s;
+    padding: 0 2px;
+  }
+  .sheets-tabs button .tab-fav:hover { opacity: 1; color: #f0b000; }
+  .sheets-tabs button .tab-fav.is-fav { opacity: 1; color: #f0b000; }
   .sheets-tabs button.new-person-tab-btn {
     margin-left: auto;
     min-width: 34px;
@@ -4366,9 +4377,19 @@ function setView(view) {
   btns[view].classList.add("active");
 
   if (view === "creators") { renderSheetTabs(); renderSheet(); }
-  else if (view === "priorities") { renderPriorityTabs(); renderPriorities(); }
+  else if (view === "priorities") {
+    const fav = getFavoritePerson();
+    if (fav && PEOPLE.some(p => p.id === fav)) activePerson = fav;
+    renderPriorityTabs();
+    renderPriorities();
+  }
   else if (view === "mkt") { renderMktTabs(); renderMktSheet(); }
-  else if (view === "reports") { renderReportTabs(); renderReports(); }
+  else if (view === "reports") {
+    const fav = getFavoritePerson();
+    if (fav && PEOPLE.some(p => p.id === fav)) activeReportPerson = fav;
+    renderReportTabs();
+    renderReports();
+  }
   else { render(); }
 }
 
@@ -4391,7 +4412,21 @@ const DAYS = [
   { key: "quinta",  label: "Quinta-feira" },
   { key: "sexta",   label: "Sexta-feira" }
 ];
-let activePerson = "amanda";
+const FAVORITE_PERSON_KEY_LOCAL = "priority-favorite-person-local-v1";
+function getFavoritePerson() {
+  try { return localStorage.getItem(FAVORITE_PERSON_KEY_LOCAL) || null; } catch { return null; }
+}
+function setFavoritePerson(id) {
+  try {
+    if (id) localStorage.setItem(FAVORITE_PERSON_KEY_LOCAL, id);
+    else localStorage.removeItem(FAVORITE_PERSON_KEY_LOCAL);
+  } catch {}
+}
+
+let activePerson = (function() {
+  const fav = getFavoritePerson();
+  return fav || "amanda";
+})();
 let priorities = loadPriorities();
 
 // Rollover automático: na segunda de uma nova semana, prioridades da semana anterior não marcadas vão pra essa segunda
@@ -4582,11 +4617,28 @@ function dayKeyFromDateStr(dateStr) {
 function renderPriorityTabs() {
   const tabs = document.getElementById("priorityTabs");
   tabs.innerHTML = "";
+  const currentFav = getFavoritePerson();
   PEOPLE.forEach(p => {
     const b = document.createElement("button");
-    b.textContent = p.label;
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = p.label;
+    b.appendChild(labelSpan);
     if (p.id === activePerson) b.classList.add("active");
     b.onclick = () => { activePerson = p.id; renderPriorityTabs(); renderPriorities(); };
+
+    const star = document.createElement("span");
+    star.className = "tab-fav";
+    const isFav = currentFav === p.id;
+    star.textContent = isFav ? "★" : "☆";
+    star.title = isFav ? "Favorito deste computador (clique para desmarcar)" : "Marcar como favorito neste computador";
+    if (isFav) star.classList.add("is-fav");
+    star.onclick = (e) => {
+      e.stopPropagation();
+      setFavoritePerson(isFav ? null : p.id);
+      renderPriorityTabs();
+      if (document.getElementById("reportsTabs")) renderReportTabs();
+    };
+    b.appendChild(star);
     tabs.appendChild(b);
   });
   const addBtn = document.createElement("button");
@@ -6880,7 +6932,10 @@ function restoreFromTrash(idx) {
    REPORTS — resumo semanal por pessoa (auto + manual)
    ========================================================= */
 const REPORTS_MANUAL_KEY = "reports-manual-v1";
-let activeReportPerson = "amanda";
+let activeReportPerson = (function() {
+  const fav = getFavoritePerson();
+  return fav || "amanda";
+})();
 let reportsManual = (function(){
   const s = storageGet(REPORTS_MANUAL_KEY, null);
   return (s && typeof s === "object") ? s : {};
@@ -6948,11 +7003,28 @@ function removeManualReportItem(personId, itemId) {
 function renderReportTabs() {
   const tabs = document.getElementById("reportsTabs");
   tabs.innerHTML = "";
+  const currentFav = getFavoritePerson();
   PEOPLE.forEach(p => {
     const b = document.createElement("button");
-    b.textContent = p.label;
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = p.label;
+    b.appendChild(labelSpan);
     if (p.id === activeReportPerson) b.classList.add("active");
     b.onclick = () => { activeReportPerson = p.id; renderReportTabs(); renderReports(); };
+
+    const star = document.createElement("span");
+    star.className = "tab-fav";
+    const isFav = currentFav === p.id;
+    star.textContent = isFav ? "★" : "☆";
+    star.title = isFav ? "Favorito deste computador (clique para desmarcar)" : "Marcar como favorito neste computador";
+    if (isFav) star.classList.add("is-fav");
+    star.onclick = (e) => {
+      e.stopPropagation();
+      setFavoritePerson(isFav ? null : p.id);
+      renderReportTabs();
+      renderPriorityTabs();
+    };
+    b.appendChild(star);
     tabs.appendChild(b);
   });
 }
