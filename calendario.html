@@ -4503,6 +4503,56 @@ function runRolloverIfDue() {
 }
 runRolloverIfDue();
 
+// Migração única: converte prioridades órfãs (sem tarefa ligada) em tarefas linkadas
+const ORPHAN_TO_TASK_KEY = "orphan-priorities-to-tasks-v1-done";
+(function migrateOrphanPrioritiesToTasks() {
+  if (storageGet(ORPHAN_TO_TASK_KEY, false)) return;
+  const linkedIds = new Set();
+  for (const dk in events) {
+    const list = events[dk];
+    if (!Array.isArray(list)) continue;
+    for (const ev of list) {
+      if (ev.priorityIds) for (const pid in ev.priorityIds) linkedIds.add(ev.priorityIds[pid]);
+    }
+  }
+  let created = 0;
+  for (const personId in priorities) {
+    const data = priorities[personId];
+    if (!data || typeof data !== "object") continue;
+    const person = PEOPLE.find(p => p.id === personId);
+    if (!person) continue;
+    for (const dk in data) {
+      const list = data[dk];
+      if (!Array.isArray(list)) continue;
+      for (const item of list) {
+        if (linkedIds.has(item.id)) continue;
+        if (!item.text || !item.text.trim()) continue;
+        const finishDate = item.finishDate || keyOf(new Date());
+        events[finishDate] = events[finishDate] || [];
+        events[finishDate].push({
+          id: uid(),
+          title: item.text || "",
+          description: item.description || "",
+          type: "",
+          status: item.done ? "concluida" : "pendente",
+          responsible: person.label,
+          responsibles: [person.label],
+          finishDate,
+          color: COLORS[0],
+          photo: (Array.isArray(item.photos) && item.photos.length) ? item.photos[0] : null,
+          subtasks: Array.isArray(item.subtasks)
+            ? item.subtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done, responsible: s.responsible || null }))
+            : [],
+          priorityIds: { [personId]: item.id }
+        });
+        created++;
+      }
+    }
+  }
+  if (created > 0) saveEvents();
+  storageSet(ORPHAN_TO_TASK_KEY, true);
+})();
+
 // Limpeza única: remove tarefas auto-criadas pela conversão de prioridade órfã (feature revertida)
 const CLEANUP_AUTO_TASKS_KEY = "cleanup-auto-tasks-v1-done";
 (function cleanupAutoCreatedTasks() {
