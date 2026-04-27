@@ -3440,6 +3440,7 @@ function saveEdit(keepOpen) {
         item.photos = photo ? [photo] : [];
         item.subtasks = subtasksCopy;
         item.finishDate = finishDate;
+        item.responsibles = [...responsibles];
         // Se a data mudou de dia da semana, move pro bucket correto
         const newDayKey = dayKeyFromDateStr(finishDate);
         if (newDayKey !== found.dayKey) {
@@ -3459,6 +3460,7 @@ function saveEdit(keepOpen) {
     // CRIAÇÃO de N prioridades (uma por responsável)
     if (!responsibles.length) { alert("Selecione pelo menos um responsável."); return; }
     const dKey = dayKeyFromDateStr(finishDate);
+    const respsCopy = [...responsibles];
     for (const r of responsibles) {
       const pid = personIdFromLabel(r);
       priorities[pid] = normalizePersonPriorities(priorities[pid]);
@@ -3472,7 +3474,8 @@ function saveEdit(keepOpen) {
         finishDate,
         description: desc,
         photos: photo ? [photo] : [],
-        subtasks: subtasksCopy.map(s => ({ ...s }))
+        subtasks: subtasksCopy.map(s => ({ ...s })),
+        responsibles: [...respsCopy]
       });
     }
     savePriorities();
@@ -5256,7 +5259,10 @@ function openPriorityAsTaskModal(item) {
   document.getElementById("editTitle").textContent = "Editar prioridade";
   document.getElementById("fTitle").value = item.text || "";
   document.getElementById("fDesc").value = item.description || "";
-  if (person) setFormResponsibles([person.label]);
+  const itemResps = Array.isArray(item.responsibles) && item.responsibles.length
+    ? item.responsibles
+    : (person ? [person.label] : []);
+  setFormResponsibles(itemResps);
 
   if (Array.isArray(item.photos) && item.photos.length) {
     currentPhoto = item.photos[0];
