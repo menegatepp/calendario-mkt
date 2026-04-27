@@ -3743,14 +3743,16 @@ const DELETED_PRIORITIES_KEY = "priorities-deleted-v1";
 
 function loadDeletedPriorities() {
   const s = storageGet(DELETED_PRIORITIES_KEY, null);
+  const result = {};
   if (s && typeof s === "object") {
-    return {
-      amanda:  Array.isArray(s.amanda)  ? s.amanda  : [],
-      arthur:  Array.isArray(s.arthur)  ? s.arthur  : [],
-      eduarda: Array.isArray(s.eduarda) ? s.eduarda : []
-    };
+    for (const key in s) {
+      result[key] = Array.isArray(s[key]) ? s[key] : [];
+    }
   }
-  return { amanda: [], arthur: [], eduarda: [] };
+  PEOPLE.forEach(p => {
+    if (!result[p.id]) result[p.id] = [];
+  });
+  return result;
 }
 function saveDeletedPriorities() {
   storageSet(DELETED_PRIORITIES_KEY, deletedPriorities);
@@ -4750,18 +4752,16 @@ function normalizePersonPriorities(p) {
 
 function loadPriorities() {
   const s = storageGet(PRIORITIES_KEY, null);
+  const result = {};
   if (s && typeof s === "object") {
-    return {
-      amanda:  normalizePersonPriorities(s.amanda),
-      arthur:  normalizePersonPriorities(s.arthur),
-      eduarda: normalizePersonPriorities(s.eduarda)
-    };
+    for (const key in s) {
+      result[key] = normalizePersonPriorities(s[key]);
+    }
   }
-  return {
-    amanda:  emptyPersonPriorities(),
-    arthur:  emptyPersonPriorities(),
-    eduarda: emptyPersonPriorities()
-  };
+  PEOPLE.forEach(p => {
+    if (!result[p.id]) result[p.id] = emptyPersonPriorities();
+  });
+  return result;
 }
 function savePriorities() {
   storageSet(PRIORITIES_KEY, priorities);
