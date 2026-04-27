@@ -4894,17 +4894,19 @@ function renderPriorities() {
       const [yy, mm, dd] = startKey.split("-").map(Number);
       const dateForDay = new Date(yy, mm - 1, dd + dayIdx);
       const dayKey = keyOf(dateForDay);
-      const fridayDate = new Date(yy, mm - 1, dd + 4);
-      const fridayKey = keyOf(fridayDate);
-      activeDayKey = dayKey;
-      openEdit(null);
-      const person = PEOPLE.find(p => p.id === activePerson);
-      if (person) setFormResponsibles([person.label]);
-      const fDateEl = document.getElementById("fDate");
-      fDateEl.value = dayKey;
-      fDateEl.min = startKey;
-      fDateEl.max = fridayKey;
-      fDateEl.title = "Permitido apenas seg–sex da semana atual";
+      const newItem = {
+        id: uid(),
+        text: "",
+        done: false,
+        finishDate: dayKey,
+        description: "",
+        photos: [],
+        subtasks: []
+      };
+      fullList.push(newItem);
+      savePriorities();
+      renderPriorities();
+      openPriorityDetail(newItem);
     };
     meta.appendChild(addBtn);
     header.appendChild(meta);
