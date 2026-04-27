@@ -1050,6 +1050,25 @@
     display: flex;
     gap: 8px;
   }
+  .report-week-divider {
+    margin: 24px 0 8px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .report-week-range-sub {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+  }
   .reports-add-row input {
     flex: 1;
     padding: 10px 14px;
@@ -6947,8 +6966,7 @@ function reportWeekRange() {
   return currentWeekRange();
 }
 
-function getAutoReportItems(personId) {
-  const { startKey, endKey } = reportWeekRange();
+function getAutoReportItemsForWeek(personId, startKey, endKey) {
   const items = [];
   const data = priorities[personId] || {};
   for (const dk in data) {
@@ -6968,7 +6986,6 @@ function getAutoReportItems(personId) {
     if (!fd || fd < startKey || fd > endKey) continue;
     items.push({ key: "a-" + d.id, text: d.text || "(sem título)" });
   }
-  // Dedupe por texto
   const seen = new Set();
   return items.filter(i => {
     const k = (i.text || "").trim().toLowerCase();
@@ -6977,11 +6994,17 @@ function getAutoReportItems(personId) {
     return true;
   });
 }
-
-function getManualReportItems(personId) {
-  const { startKey } = reportWeekRange();
+function getManualReportItemsForWeek(personId, startKey) {
   const personMap = reportsManual[personId] || {};
   return personMap[startKey] || [];
+}
+function getAutoReportItems(personId) {
+  const { startKey, endKey } = reportWeekRange();
+  return getAutoReportItemsForWeek(personId, startKey, endKey);
+}
+function getManualReportItems(personId) {
+  const { startKey } = reportWeekRange();
+  return getManualReportItemsForWeek(personId, startKey);
 }
 
 function addManualReportItem(personId, text) {
@@ -7033,20 +7056,36 @@ function renderReportTabs() {
 function renderReports() {
   const person = PEOPLE.find(p => p.id === activeReportPerson);
   document.getElementById("reportsTitle").textContent = "Report · " + (person ? person.label : "");
-  const { startKey, endKey } = reportWeekRange();
+  const cur = reportWeekRange();
   const fmt = k => k.split("-").reverse().slice(0, 2).join("/");
-  document.getElementById("reportsWeekRange").textContent = `Semana ${fmt(startKey)}–${fmt(endKey)}`;
+  document.getElementById("reportsWeekRange").textContent = `Semana ${fmt(cur.startKey)}–${fmt(cur.endKey)}`;
 
   const box = document.getElementById("reportsList");
   box.innerHTML = "";
-  const auto = getAutoReportItems(activeReportPerson);
-  const manual = getManualReportItems(activeReportPerson);
+
+  appendReportWeekBlock(box, activeReportPerson, cur.startKey, cur.endKey, null, true);
+
+  const prev = previousWeekRange();
+  appendReportWeekBlock(box, activeReportPerson, prev.startKey, prev.endKey, "Semana anterior", false);
+}
+
+function appendReportWeekBlock(container, personId, startKey, endKey, label, isCurrent) {
+  const auto = getAutoReportItemsForWeek(personId, startKey, endKey);
+  const manual = getManualReportItemsForWeek(personId, startKey);
+
+  if (label) {
+    const fmt = k => k.split("-").reverse().slice(0, 2).join("/");
+    const sep = document.createElement("div");
+    sep.className = "report-week-divider";
+    sep.innerHTML = `<span>${label}</span><span class="report-week-range-sub">${fmt(startKey)}–${fmt(endKey)}</span>`;
+    container.appendChild(sep);
+  }
 
   if (auto.length) {
     const lbl = document.createElement("div");
     lbl.className = "report-section-label";
-    lbl.textContent = "Prioridades feitas nesta semana";
-    box.appendChild(lbl);
+    lbl.textContent = isCurrent ? "Prioridades feitas nesta semana" : "Prioridades feitas";
+    container.appendChild(lbl);
     auto.forEach(i => {
       const row = document.createElement("div");
       row.className = "report-item auto";
@@ -7054,14 +7093,14 @@ function renderReports() {
       t.className = "report-text";
       t.textContent = i.text;
       row.appendChild(t);
-      box.appendChild(row);
+      container.appendChild(row);
     });
   }
   if (manual.length) {
     const lbl = document.createElement("div");
     lbl.className = "report-section-label";
     lbl.textContent = "Adicionados manualmente";
-    box.appendChild(lbl);
+    container.appendChild(lbl);
     manual.forEach(i => {
       const row = document.createElement("div");
       row.className = "report-item manual";
@@ -7069,23 +7108,27 @@ function renderReports() {
       t.className = "report-text";
       t.textContent = i.text;
       row.appendChild(t);
-      const del = document.createElement("button");
-      del.className = "report-del";
-      del.textContent = "×";
-      del.title = "Remover";
-      del.onclick = () => {
-        removeManualReportItem(activeReportPerson, i.id);
-        renderReports();
-      };
-      row.appendChild(del);
-      box.appendChild(row);
+      if (isCurrent) {
+        const del = document.createElement("button");
+        del.className = "report-del";
+        del.textContent = "×";
+        del.title = "Remover";
+        del.onclick = () => {
+          removeManualReportItem(personId, i.id);
+          renderReports();
+        };
+        row.appendChild(del);
+      }
+      container.appendChild(row);
     });
   }
   if (!auto.length && !manual.length) {
     const empty = document.createElement("div");
     empty.className = "report-empty";
-    empty.textContent = "Nenhum item ainda. Marque prioridades como feitas nesta semana ou adicione itens abaixo.";
-    box.appendChild(empty);
+    empty.textContent = isCurrent
+      ? "Nenhum item ainda. Marque prioridades como feitas nesta semana ou adicione itens abaixo."
+      : "Sem itens na semana anterior.";
+    container.appendChild(empty);
   }
 }
 
