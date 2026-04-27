@@ -3429,6 +3429,7 @@ function saveEdit(keepOpen) {
   saveEvents();
   renderDayEvents();
   render();
+  renderPriorities();
   if (keepOpen) {
     openEdit(null);
   } else {
@@ -4821,14 +4822,14 @@ function renderPriorities() {
       const dayIdx = DAYS.findIndex(d => d.key === day.key);
       const [yy, mm, dd] = startKey.split("-").map(Number);
       const dateForDay = new Date(yy, mm - 1, dd + dayIdx);
-      fullList.push({ id: uid(), text: "", done: false, finishDate: keyOf(dateForDay) });
-      savePriorities();
-      renderPriorities();
-      setTimeout(() => {
-        const texts = section.querySelectorAll(".priority-item .text");
-        const last = texts[texts.length - 1];
-        if (last) last.focus();
-      }, 0);
+      const dayKey = keyOf(dateForDay);
+      activeDayKey = dayKey;
+      openEdit(null);
+      const person = PEOPLE.find(p => p.id === activePerson);
+      if (person) setFormResponsibles([person.label]);
+      const fDateEl = document.getElementById("fDate");
+      fDateEl.value = dayKey;
+      fDateEl.max = dayKey;
     };
     meta.appendChild(addBtn);
     header.appendChild(meta);
