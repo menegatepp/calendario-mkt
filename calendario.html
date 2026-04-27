@@ -3441,12 +3441,30 @@ function saveEdit(keepOpen) {
         item.subtasks = subtasksCopy;
         item.finishDate = finishDate;
         item.responsibles = [...responsibles];
-        // Se a data mudou de dia da semana, move pro bucket correto
         const newDayKey = dayKeyFromDateStr(finishDate);
         if (newDayKey !== found.dayKey) {
           found.list.splice(found.idx, 1);
           priorities[found.personId][newDayKey] = priorities[found.personId][newDayKey] || [];
           priorities[found.personId][newDayKey].push(item);
+        }
+        // Cria prioridades pra responsáveis adicionais selecionados que ainda não têm
+        for (const r of responsibles) {
+          const pid = personIdFromLabel(r);
+          if (pid === found.personId) continue;
+          priorities[pid] = normalizePersonPriorities(priorities[pid]);
+          const otherList = priorities[pid][newDayKey] = priorities[pid][newDayKey] || [];
+          const already = otherList.some(p => p.text === title);
+          if (already) continue;
+          otherList.push({
+            id: uid(),
+            text: title,
+            done: false,
+            finishDate,
+            description: desc,
+            photos: photo ? [photo] : [],
+            subtasks: subtasksCopy.map(s => ({ ...s })),
+            responsibles: [...responsibles]
+          });
         }
       }
       savePriorities();
