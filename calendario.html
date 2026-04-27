@@ -2886,6 +2886,7 @@ let editingId = null;
 let selectedColor = COLORS[0];
 let currentPhoto = null;
 let currentSubtasks = []; // [{ id, text, done }]
+let priorityOnlyMode = false; // quando true, saveEdit cria prioridades sem criar tarefa no calendário
 let dragInfo = null; // { fromKey, eventId }
 
 const tooltipEl = document.createElement("div");
@@ -3365,6 +3366,7 @@ function getCurrentFormType() {
 }
 
 function openEdit(ev) {
+  priorityOnlyMode = false;
   editingId = ev ? ev.id : null;
   document.getElementById("editTitle").textContent = ev ? "Editar tarefa" : "Nova tarefa";
   document.getElementById("fTitle").value = ev ? ev.title || "" : "";
@@ -3418,6 +3420,44 @@ function saveEdit(keepOpen) {
   const responsible = responsibles[0] || "";
   const finishDate = document.getElementById("fDate").value || activeDayKey;
   if (!title && !desc && !currentPhoto) { alert("Preencha pelo menos o título."); return; }
+
+  // Modo priority-only: cria N prioridades (uma por responsável) e NÃO cria tarefa no calendário
+  if (priorityOnlyMode) {
+    if (!responsibles.length) { alert("Selecione pelo menos um responsável."); return; }
+    if (!title) { alert("Preencha o título."); return; }
+    const dKey = dayKeyFromDateStr(finishDate);
+    const subtasksCopy = currentSubtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done, responsible: s.responsible || null }));
+    const photo = currentPhoto;
+    for (const r of responsibles) {
+      const pid = personIdFromLabel(r);
+      priorities[pid] = normalizePersonPriorities(priorities[pid]);
+      const list = priorities[pid][dKey] = priorities[pid][dKey] || [];
+      const already = list.some(p => p.text === title);
+      if (already) continue;
+      list.push({
+        id: uid(),
+        text: title,
+        done: false,
+        finishDate,
+        description: desc,
+        photos: photo ? [photo] : [],
+        subtasks: subtasksCopy.map(s => ({ ...s }))
+      });
+    }
+    savePriorities();
+    priorityOnlyMode = false;
+    if (keepOpen) {
+      // Reabrir como prioridade nova (não tarefa)
+      openEdit(null);
+      priorityOnlyMode = true;
+      document.getElementById("editTitle").textContent = "Nova prioridade";
+    } else {
+      document.getElementById("editOverlay").classList.remove("show");
+    }
+    renderPriorities();
+    return;
+  }
+
   if (finishDate > activeDayKey) {
     const pubBr = activeDayKey.split("-").reverse().join("/");
     alert(`"Finalizar no dia" não pode ser depois da data da publicação (${pubBr}). Ajuste o campo antes de salvar.`);
@@ -4894,19 +4934,19 @@ function renderPriorities() {
       const [yy, mm, dd] = startKey.split("-").map(Number);
       const dateForDay = new Date(yy, mm - 1, dd + dayIdx);
       const dayKey = keyOf(dateForDay);
-      const newItem = {
-        id: uid(),
-        text: "",
-        done: false,
-        finishDate: dayKey,
-        description: "",
-        photos: [],
-        subtasks: []
-      };
-      fullList.push(newItem);
-      savePriorities();
-      renderPriorities();
-      openPriorityDetail(newItem);
+      const fridayDate = new Date(yy, mm - 1, dd + 4);
+      const fridayKey = keyOf(fridayDate);
+      activeDayKey = dayKey;
+      openEdit(null);
+      priorityOnlyMode = true;
+      document.getElementById("editTitle").textContent = "Nova prioridade";
+      const person = PEOPLE.find(p => p.id === activePerson);
+      if (person) setFormResponsibles([person.label]);
+      const fDateEl = document.getElementById("fDate");
+      fDateEl.value = dayKey;
+      fDateEl.min = startKey;
+      fDateEl.max = fridayKey;
+      fDateEl.title = "Permitido apenas seg–sex da semana atual";
     };
     meta.appendChild(addBtn);
     header.appendChild(meta);
