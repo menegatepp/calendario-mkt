@@ -1049,6 +1049,7 @@
   .reports-add-row {
     display: flex;
     gap: 8px;
+    margin-bottom: 16px;
   }
   .report-week-divider {
     margin: 24px 0 8px;
@@ -2233,11 +2234,11 @@
       <h2 id="reportsTitle">—</h2>
       <span class="reports-week-range" id="reportsWeekRange"></span>
     </div>
-    <div id="reportsList" class="reports-list"></div>
     <div class="reports-add-row">
       <input type="text" id="reportInput" placeholder="Adicionar item ao report desta semana..." />
       <button class="primary" id="reportAddBtn">+ Adicionar</button>
     </div>
+    <div id="reportsList" class="reports-list"></div>
   </div>
 </div>
 
@@ -3375,6 +3376,7 @@ function openEdit(ev) {
   setFormResponsibles(evResps.length ? evResps : (PEOPLE[0] ? [PEOPLE[0].label] : []));
   const fDateEl = document.getElementById("fDate");
   fDateEl.value = (ev && ev.finishDate) || activeDayKey;
+  fDateEl.min = "";
   fDateEl.max = activeDayKey;
   fDateEl.title = "Deve ser até " + activeDayKey.split("-").reverse().join("/") + " (data da publicação)";
   if (ev && ev.color) selectedColor = ev.color;
@@ -4842,13 +4844,17 @@ function renderPriorities() {
       const [yy, mm, dd] = startKey.split("-").map(Number);
       const dateForDay = new Date(yy, mm - 1, dd + dayIdx);
       const dayKey = keyOf(dateForDay);
+      const fridayDate = new Date(yy, mm - 1, dd + 4);
+      const fridayKey = keyOf(fridayDate);
       activeDayKey = dayKey;
       openEdit(null);
       const person = PEOPLE.find(p => p.id === activePerson);
       if (person) setFormResponsibles([person.label]);
       const fDateEl = document.getElementById("fDate");
       fDateEl.value = dayKey;
-      fDateEl.max = dayKey;
+      fDateEl.min = startKey;
+      fDateEl.max = fridayKey;
+      fDateEl.title = "Permitido apenas seg–sex da semana atual";
     };
     meta.appendChild(addBtn);
     header.appendChild(meta);
