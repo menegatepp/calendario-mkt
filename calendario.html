@@ -2886,7 +2886,8 @@ let editingId = null;
 let selectedColor = COLORS[0];
 let currentPhoto = null;
 let currentSubtasks = []; // [{ id, text, done }]
-let priorityOnlyMode = false; // quando true, saveEdit cria prioridades sem criar tarefa no calendário
+let priorityOnlyMode = false; // quando true, saveEdit cria/edita prioridades sem mexer em tarefas
+let priorityOnlyEditingId = null; // id da prioridade sendo editada (priority-only mode)
 let dragInfo = null; // { fromKey, eventId }
 
 const tooltipEl = document.createElement("div");
@@ -3367,6 +3368,7 @@ function getCurrentFormType() {
 
 function openEdit(ev) {
   priorityOnlyMode = false;
+  priorityOnlyEditingId = null;
   editingId = ev ? ev.id : null;
   document.getElementById("editTitle").textContent = ev ? "Editar tarefa" : "Nova tarefa";
   document.getElementById("fTitle").value = ev ? ev.title || "" : "";
@@ -3421,13 +3423,42 @@ function saveEdit(keepOpen) {
   const finishDate = document.getElementById("fDate").value || activeDayKey;
   if (!title && !desc && !currentPhoto) { alert("Preencha pelo menos o título."); return; }
 
-  // Modo priority-only: cria N prioridades (uma por responsável) e NÃO cria tarefa no calendário
+  // Modo priority-only: cria/edita prioridades sem mexer em tarefas no calendário
   if (priorityOnlyMode) {
-    if (!responsibles.length) { alert("Selecione pelo menos um responsável."); return; }
     if (!title) { alert("Preencha o título."); return; }
-    const dKey = dayKeyFromDateStr(finishDate);
+
     const subtasksCopy = currentSubtasks.map(s => ({ id: s.id || uid(), text: s.text || "", done: !!s.done, responsible: s.responsible || null }));
     const photo = currentPhoto;
+
+    if (priorityOnlyEditingId) {
+      // EDIÇÃO de prioridade existente
+      const found = findPriorityById(priorityOnlyEditingId);
+      if (found) {
+        const item = found.list[found.idx];
+        item.text = title;
+        item.description = desc;
+        item.photos = photo ? [photo] : [];
+        item.subtasks = subtasksCopy;
+        item.finishDate = finishDate;
+        // Se a data mudou de dia da semana, move pro bucket correto
+        const newDayKey = dayKeyFromDateStr(finishDate);
+        if (newDayKey !== found.dayKey) {
+          found.list.splice(found.idx, 1);
+          priorities[found.personId][newDayKey] = priorities[found.personId][newDayKey] || [];
+          priorities[found.personId][newDayKey].push(item);
+        }
+      }
+      savePriorities();
+      priorityOnlyMode = false;
+      priorityOnlyEditingId = null;
+      document.getElementById("editOverlay").classList.remove("show");
+      renderPriorities();
+      return;
+    }
+
+    // CRIAÇÃO de N prioridades (uma por responsável)
+    if (!responsibles.length) { alert("Selecione pelo menos um responsável."); return; }
+    const dKey = dayKeyFromDateStr(finishDate);
     for (const r of responsibles) {
       const pid = personIdFromLabel(r);
       priorities[pid] = normalizePersonPriorities(priorities[pid]);
@@ -3447,7 +3478,6 @@ function saveEdit(keepOpen) {
     savePriorities();
     priorityOnlyMode = false;
     if (keepOpen) {
-      // Reabrir como prioridade nova (não tarefa)
       openEdit(null);
       priorityOnlyMode = true;
       document.getElementById("editTitle").textContent = "Nova prioridade";
@@ -5213,12 +5243,55 @@ function buildPriorityItem(item, sourceList, personId, dayKey, opts) {
 let priorityDetailEditing = null;   // ref pro item sendo editado
 let priorityDetailDraft = null;     // { description, photos[] } rascunho
 
+function openPriorityAsTaskModal(item) {
+  const found = findPriorityById(item.id);
+  if (!found) return;
+  const person = PEOPLE.find(p => p.id === found.personId);
+  const finishDate = item.finishDate || keyOf(new Date());
+  activeDayKey = finishDate;
+
+  openEdit(null);
+  priorityOnlyMode = true;
+  priorityOnlyEditingId = item.id;
+  document.getElementById("editTitle").textContent = "Editar prioridade";
+  document.getElementById("fTitle").value = item.text || "";
+  document.getElementById("fDesc").value = item.description || "";
+  if (person) setFormResponsibles([person.label]);
+
+  if (Array.isArray(item.photos) && item.photos.length) {
+    currentPhoto = item.photos[0];
+    const prev = document.getElementById("photoPreview");
+    prev.src = currentPhoto;
+    prev.classList.add("show");
+  } else {
+    currentPhoto = null;
+    const prev = document.getElementById("photoPreview");
+    prev.classList.remove("show");
+    prev.removeAttribute("src");
+  }
+
+  currentSubtasks = (Array.isArray(item.subtasks) ? item.subtasks : []).map(s => ({
+    id: s.id || subtaskUid(),
+    text: s.text || "",
+    done: !!s.done,
+    responsible: s.responsible || null
+  }));
+  renderFormSubtasks();
+
+  const fDateEl = document.getElementById("fDate");
+  fDateEl.value = finishDate;
+  fDateEl.min = "";
+  fDateEl.max = "";
+
+  document.getElementById("deleteBtn").style.visibility = "hidden";
+  document.getElementById("saveAndNewBtn").style.display = "none";
+}
+
 function openPriorityDetail(item, opts) {
   const fromTrash = !!(opts && opts.fromTrash);
 
   // Se a prioridade está ligada a uma tarefa (e não veio do histórico),
-  // abre direto o modal completo da tarefa — sincronização bidirecional já garante
-  // que as edições voltam pra prioridade.
+  // abre direto o modal completo da tarefa.
   if (!fromTrash) {
     const linked = findTaskByPriorityId(item.id);
     if (linked) {
@@ -5226,6 +5299,9 @@ function openPriorityDetail(item, opts) {
       openEdit(linked.ev);
       return;
     }
+    // Órfã (sem tarefa): abre o modal estilo tarefa em modo priority-only
+    openPriorityAsTaskModal(item);
+    return;
   }
 
   priorityDetailEditing = item;
