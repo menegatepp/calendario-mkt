@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
-<title>Calendário de Tarefas</title>
+<title>hub mkt design</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='32' fill='%23d4ff00'/><text x='32' y='46' font-size='40' font-weight='800' text-anchor='middle' fill='%23000' font-family='Arial,sans-serif'>%E2%9C%A6</text></svg>" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2940,7 +2940,7 @@ function renderCalendarTypeFilter() {
   options.forEach(opt => {
     const count = opt.value === "all"
       ? allEvents.length
-      : allEvents.filter(ev => ev.type === opt.value).length;
+      : allEvents.filter(ev => ev.type === opt.value || ev.category === opt.value).length;
     const b = document.createElement("button");
     if (calendarTypeFilter === opt.value) b.classList.add("active");
     b.innerHTML = `${opt.label}<span class="count">${count}</span>`;
@@ -3014,7 +3014,7 @@ function render() {
     const allList = events[k] || [];
     const list = calendarTypeFilter === "all"
       ? allList
-      : allList.filter(ev => ev.type === calendarTypeFilter);
+      : allList.filter(ev => ev.type === calendarTypeFilter || ev.category === calendarTypeFilter);
     const showDesc = list.length <= (viewMode === "week" ? 5 : 2);
     list.slice(0, maxEventsShown).forEach(ev => {
       const e = document.createElement("div");
@@ -3036,7 +3036,7 @@ function render() {
         activeDayKey = k;
         openEdit(ev);
       });
-      e.addEventListener("mouseenter", () => showTooltip(e, ev.type || ""));
+      e.addEventListener("mouseenter", () => showTooltip(e, [ev.category, ev.type].filter(Boolean).join(" · ")));
       e.addEventListener("mouseleave", hideTooltip);
 
       const hasDesc = showDesc && ev.description;
@@ -3105,10 +3105,13 @@ function moveEvent(fromKey, eventId, toKey) {
   const idx = src.findIndex(e => e.id === eventId);
   if (idx < 0) return;
   const [ev] = src.splice(idx, 1);
+  ev.finishDate = toKey;
   if (!src.length) delete events[fromKey];
   (events[toKey] = events[toKey] || []).push(ev);
   saveEvents();
+  syncTaskPriority(ev);
   render();
+  renderPriorities();
 }
 
 function openDay(k, d) {
@@ -3157,6 +3160,7 @@ function renderDayEvents() {
     meta.className = "meta";
     const stObj = STATUSES.find(s => s.id === ev.status);
     const parts = [];
+    if (ev.category) parts.push(ev.category);
     if (ev.type) parts.push(ev.type);
     if (stObj) parts.push(stObj.label);
     const resps = getResponsibles(ev);
@@ -3190,7 +3194,11 @@ function populateSelects() {
   typeSel.onchange = () => setFormType(typeSel.value);
 
   document.querySelectorAll("#specialTypes .special-type").forEach(btn => {
-    btn.onclick = () => setFormType(btn.dataset.type);
+    btn.onclick = () => {
+      // Toggle: clicar novamente desativa
+      if (btn.classList.contains("active")) setFormCategory("");
+      else setFormCategory(btn.dataset.type);
+    };
   });
 
   const statusSel = document.getElementById("fStatus");
@@ -3351,20 +3359,27 @@ function addFormSubtask() {
 }
 
 function setFormType(typeName) {
-  const isSpecial = SPECIAL_TYPE_NAMES.includes(typeName);
   const typeSel = document.getElementById("fType");
-  typeSel.value = isSpecial ? "" : (typeName || "");
-  document.querySelectorAll("#specialTypes .special-type").forEach(b => {
-    b.classList.toggle("active", isSpecial && b.dataset.type === typeName);
-  });
+  typeSel.value = SPECIAL_TYPE_NAMES.includes(typeName) ? "" : (typeName || "");
   const t = TASK_TYPES.find(x => x.name === typeName);
   if (t) { selectedColor = t.color; renderColors(); }
 }
 
+function setFormCategory(categoryName) {
+  document.querySelectorAll("#specialTypes .special-type").forEach(b => {
+    b.classList.toggle("active", categoryName && b.dataset.type === categoryName);
+  });
+  const t = TASK_TYPES.find(x => x.name === categoryName);
+  if (t) { selectedColor = t.color; renderColors(); }
+}
+
 function getCurrentFormType() {
+  return document.getElementById("fType").value || "";
+}
+
+function getCurrentFormCategory() {
   const activeSpecial = document.querySelector("#specialTypes .special-type.active");
-  if (activeSpecial) return activeSpecial.dataset.type;
-  return document.getElementById("fType").value;
+  return activeSpecial ? activeSpecial.dataset.type : "";
 }
 
 function openEdit(ev) {
@@ -3375,7 +3390,15 @@ function openEdit(ev) {
   document.getElementById("fTitle").value = ev ? ev.title || "" : "";
   document.getElementById("fDesc").value  = ev ? ev.description || "" : "";
   const defaultType = (TASK_TYPES.find(t => !SPECIAL_TYPE_NAMES.includes(t.name)) || TASK_TYPES[0]).name;
-  setFormType(ev && ev.type ? ev.type : defaultType);
+  // Backward compat: se ev.type é uma "categoria" especial e ev.category está vazio, migra
+  let _evType = ev ? (ev.type || "") : "";
+  let _evCategory = ev ? (ev.category || "") : "";
+  if (SPECIAL_TYPE_NAMES.includes(_evType) && !_evCategory) {
+    _evCategory = _evType;
+    _evType = "";
+  }
+  setFormType(_evType || (ev ? "" : defaultType));
+  setFormCategory(_evCategory);
   document.getElementById("fStatus").value = ev && ev.status ? ev.status : STATUSES[0].id;
   const evResps = ev ? getResponsibles(ev) : [];
   setFormResponsibles(evResps.length ? evResps : (PEOPLE[0] ? [PEOPLE[0].label] : []));
@@ -3418,6 +3441,7 @@ function saveEdit(keepOpen) {
   const title = document.getElementById("fTitle").value.trim();
   const desc = document.getElementById("fDesc").value.trim();
   const type = getCurrentFormType();
+  const category = getCurrentFormCategory();
   const status = document.getElementById("fStatus").value;
   const responsibles = getFormResponsibles();
   const responsible = responsibles[0] || "";
@@ -3518,7 +3542,7 @@ function saveEdit(keepOpen) {
 
   const payload = {
     title, description: desc,
-    type, status,
+    type, category, status,
     responsible, responsibles,
     finishDate,
     color: selectedColor,
