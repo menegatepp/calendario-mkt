@@ -3036,7 +3036,7 @@ function render() {
         activeDayKey = k;
         openEdit(ev);
       });
-      e.addEventListener("mouseenter", () => showTooltip(e, [ev.category, ev.type].filter(Boolean).join(" · ")));
+      e.addEventListener("mouseenter", () => showTooltip(e, ev.type || ""));
       e.addEventListener("mouseleave", hideTooltip);
 
       const hasDesc = showDesc && ev.description;
