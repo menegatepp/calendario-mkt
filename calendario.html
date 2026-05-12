@@ -7369,6 +7369,86 @@ document.getElementById("reportInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); addReportFromInput(); }
 });
 
+/* =========================================================
+   REALTIME — sincroniza alterações de outros usuários
+   ========================================================= */
+function isViewActive(id) {
+  const el = document.getElementById(id);
+  return el && el.style.display !== "none";
+}
+
+function applyRemoteUpdate(key) {
+  try {
+    switch (key) {
+      case STORAGE_KEY: // calendar-events-v1
+        events = loadEvents();
+        if (isViewActive("calendarView")) render();
+        if (document.getElementById("dayOverlay") && document.getElementById("dayOverlay").classList.contains("show")) {
+          renderDayEvents();
+        }
+        break;
+      case PRIORITIES_KEY:
+        priorities = loadPriorities();
+        if (isViewActive("prioritiesView")) {
+          renderPriorityTabs();
+          renderPriorities();
+        }
+        if (isViewActive("reportsView")) renderReports();
+        if (isViewActive("calendarView")) render();
+        break;
+      case DELETED_PRIORITIES_KEY:
+        deletedPriorities = loadDeletedPriorities();
+        break;
+      case PEOPLE_KEY:
+        PEOPLE = loadPeople();
+        renderResponsibleChips();
+        if (isViewActive("prioritiesView")) renderPriorityTabs();
+        if (isViewActive("reportsView")) renderReportTabs();
+        break;
+      case SHEETS_STORAGE_KEY:
+        sheetsData = loadSheets();
+        if (isViewActive("creatorsView")) renderSheet();
+        break;
+      case MKT_STORAGE_KEY:
+        mktData = loadMktData();
+        if (isViewActive("mktView")) renderMktSheet();
+        break;
+      case "priority-notes-v1":
+        priorityNotes = (function(){
+          const s = storageGet("priority-notes-v1", null);
+          return (s && typeof s === "object") ? s : {};
+        })();
+        // Se o modal de anotações está aberto e mostrando a aba ativa, atualiza
+        if (notesCurrentPersonId && document.getElementById("notesOverlay").classList.contains("show")) {
+          const txt = document.getElementById("notesTextarea");
+          if (txt && document.activeElement !== txt) {
+            txt.value = priorityNotes[notesCurrentPersonId] || "";
+          }
+        }
+        break;
+      case "reports-manual-v1":
+        reportsManual = (function(){
+          const s = storageGet("reports-manual-v1", null);
+          return (s && typeof s === "object") ? s : {};
+        })();
+        if (isViewActive("reportsView")) renderReports();
+        break;
+    }
+  } catch (err) {
+    console.warn("applyRemoteUpdate erro:", err);
+  }
+}
+
+pb.collection("app_data").subscribe("*", (e) => {
+  if (e.action !== "create" && e.action !== "update") return;
+  const key = e.record && e.record.key;
+  if (!key) return;
+  if (PENDING[key]) return; // tem write local pendente, não sobrescreve
+  CACHE[key] = e.record.value;
+  RECORD_IDS[key] = e.record.id;
+  applyRemoteUpdate(key);
+}).catch(err => console.warn("Falha ao subscrever realtime:", err));
+
 })(); // end main()
 </script>
 </body>
