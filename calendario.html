@@ -1374,6 +1374,46 @@
   }
   .ficha-btn.has-data:hover { background: #d9efc7; }
 
+  .contract-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .contract-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: transparent;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    box-shadow: none;
+    margin: 4px 0 4px 10px;
+    color: var(--muted);
+    text-decoration: none;
+    transition: background 0.12s, color 0.12s;
+  }
+  .contract-btn:hover { background: var(--soft); color: var(--black); }
+  .contract-btn.has-file {
+    background: #e7eef7;
+    color: #1a4d8f;
+  }
+  .contract-btn.has-file:hover { background: #cfdfee; }
+  .contract-del {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    border-radius: 4px;
+    opacity: 0.5;
+  }
+  .contract-del:hover { opacity: 1; color: #b00020; background: #fff2f2; }
+
   .client-form { display: flex; flex-direction: column; gap: 12px; }
   .client-form label {
     font-size: 10.5px;
@@ -2625,6 +2665,13 @@ async function uploadPhoto(blob, filename) {
   form.append("file", blob, filename || "photo.jpg");
   const r = await pb.collection("photos").create(form);
   return pb.files.getUrl(r, r.file);
+}
+
+async function uploadContract(file) {
+  const form = new FormData();
+  form.append("file", file, file.name || "contract");
+  const r = await pb.collection("contracts").create(form);
+  return { url: pb.files.getUrl(r, r.file), name: file.name || "contract" };
 }
 
 /* One-shot migration: localStorage -> PocketBase. Exposed as window.migrarLocalStorage(). */
@@ -4187,6 +4234,66 @@ function statusCaptClass(v) {
   return m[v] || "pendente";
 }
 
+function buildContractCell(row) {
+  const wrap = document.createElement("div");
+  wrap.className = "contract-cell";
+
+  if (row.contractUrl) {
+    const link = document.createElement("a");
+    link.href = row.contractUrl;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.className = "contract-btn has-file";
+    link.title = "Abrir contrato: " + (row.contractName || "arquivo");
+    link.textContent = "📎";
+    wrap.appendChild(link);
+
+    const del = document.createElement("button");
+    del.className = "contract-del";
+    del.textContent = "×";
+    del.title = "Remover contrato";
+    del.onclick = (e) => {
+      e.stopPropagation();
+      if (!confirm("Remover o contrato deste creator?")) return;
+      delete row.contractUrl;
+      delete row.contractName;
+      saveSheets();
+      renderSheet();
+    };
+    wrap.appendChild(del);
+  } else {
+    const btn = document.createElement("button");
+    btn.className = "contract-btn";
+    btn.textContent = "📎";
+    btn.title = "Subir contrato";
+    const input = document.createElement("input");
+    input.type = "file";
+    input.style.display = "none";
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      btn.disabled = true;
+      btn.textContent = "…";
+      try {
+        const { url, name } = await uploadContract(file);
+        row.contractUrl = url;
+        row.contractName = name;
+        saveSheets();
+        renderSheet();
+      } catch (err) {
+        alert("Falha ao subir contrato: " + (err && err.message ? err.message : err));
+        btn.disabled = false;
+        btn.textContent = "📎";
+      }
+    };
+    btn.onclick = () => input.click();
+    wrap.appendChild(btn);
+    wrap.appendChild(input);
+  }
+
+  return wrap;
+}
+
 function renderSheet() {
   const def = SHEETS_DEFS[activeSheet];
   const rows = sheetsData[activeSheet] = sheetsData[activeSheet] || [];
@@ -4206,6 +4313,9 @@ function renderSheet() {
   const thFicha = document.createElement("th");
   thFicha.textContent = "Ficha";
   trh.appendChild(thFicha);
+  const thContract = document.createElement("th");
+  thContract.textContent = "Contrato";
+  trh.appendChild(thContract);
   if (activeSheet !== "captacao") {
     const thPost = document.createElement("th");
     thPost.textContent = "Postou";
@@ -4245,6 +4355,10 @@ function renderSheet() {
     fichaBtn.onclick = () => openClientDataModal(row);
     tdFicha.appendChild(fichaBtn);
     tr.appendChild(tdFicha);
+
+    const tdContract = document.createElement("td");
+    tdContract.appendChild(buildContractCell(row));
+    tr.appendChild(tdContract);
 
     if (activeSheet !== "captacao") {
       const tdPost = document.createElement("td");
