@@ -2639,15 +2639,68 @@ function storageSet(key, value) {
   PENDING[key] = setTimeout(() => flushWrite(key), 400);
 }
 
+// Merge palliativo: une coleções locais com remotas pra evitar overwrite entre usuários
+function mergeArraysById(local, remote) {
+  if (local.length === 0) return remote.slice();
+  if (remote.length === 0) return local.slice();
+  const sample = local[0];
+  const hasId = sample && typeof sample === "object" && "id" in sample;
+  if (!hasId) return local.slice();
+  const localMap = new Map();
+  for (const item of local) localMap.set(item.id, item);
+  const out = local.slice();
+  for (const item of remote) {
+    if (!localMap.has(item.id)) out.push(item);
+  }
+  return out;
+}
+function deepMergeForSave(local, remote) {
+  if (Array.isArray(local) && Array.isArray(remote)) return mergeArraysById(local, remote);
+  if (local && typeof local === "object" && remote && typeof remote === "object" && !Array.isArray(local) && !Array.isArray(remote)) {
+    const out = {};
+    const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+    for (const k of keys) {
+      if (k in local && k in remote) out[k] = deepMergeForSave(local[k], remote[k]);
+      else if (k in local) out[k] = local[k];
+      else out[k] = remote[k];
+    }
+    return out;
+  }
+  return local;
+}
+
 async function flushWrite(key) {
   delete PENDING[key];
-  const value = CACHE[key];
+  let value = CACHE[key];
   try {
-    if (RECORD_IDS[key]) {
-      await pb.collection("app_data").update(RECORD_IDS[key], { value });
+    // 1) Busca a versão mais recente do PocketBase
+    let recordId = RECORD_IDS[key];
+    let remoteValue = null;
+    if (recordId) {
+      try {
+        const r = await pb.collection("app_data").getOne(recordId);
+        remoteValue = r.value;
+      } catch (e) {
+        // record sumiu — vamos recriar
+        recordId = null;
+        delete RECORD_IDS[key];
+      }
+    }
+    // 2) Merge com a versão local (palliativo: itens novos de ambos preservados)
+    if (remoteValue !== null && remoteValue !== undefined) {
+      value = deepMergeForSave(value, remoteValue);
+      CACHE[key] = value;
+    }
+    // 3) Grava
+    if (recordId) {
+      await pb.collection("app_data").update(recordId, { value });
     } else {
       const r = await pb.collection("app_data").create({ key, value });
       RECORD_IDS[key] = r.id;
+    }
+    // 4) Reflete o merge na UI (se outros usuários adicionaram coisas)
+    if (typeof applyRemoteUpdate === "function") {
+      try { applyRemoteUpdate(key); } catch {}
     }
   } catch (err) {
     console.error("Falha ao salvar", key, err);
