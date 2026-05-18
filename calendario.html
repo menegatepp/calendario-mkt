@@ -2639,6 +2639,37 @@ function storageSet(key, value) {
   PENDING[key] = setTimeout(() => flushWrite(key), 400);
 }
 
+// Tombstones locais (por navegador) — IDs de itens explicitamente excluídos.
+// Aplicados pós-merge pra a exclusão "ganhar" contra dados antigos do PB remoto.
+const PRIORITY_TOMB_LS_KEY = "priority-tombstones-v1";
+const EVENT_TOMB_LS_KEY = "event-tombstones-v1";
+const TOMB_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+function _loadTombs(lsKey) {
+  try {
+    const arr = JSON.parse(localStorage.getItem(lsKey) || "[]");
+    const cutoff = Date.now() - TOMB_TTL_MS;
+    return arr.filter(t => t && t.id && (t.ts || 0) > cutoff);
+  } catch { return []; }
+}
+function _saveTombs(lsKey, arr) {
+  try { localStorage.setItem(lsKey, JSON.stringify(arr)); } catch {}
+}
+function addPriorityTombstone(id) {
+  if (!id) return;
+  const arr = _loadTombs(PRIORITY_TOMB_LS_KEY);
+  if (!arr.find(t => t.id === id)) arr.push({ id, ts: Date.now() });
+  _saveTombs(PRIORITY_TOMB_LS_KEY, arr);
+}
+function addEventTombstone(id) {
+  if (!id) return;
+  const arr = _loadTombs(EVENT_TOMB_LS_KEY);
+  if (!arr.find(t => t.id === id)) arr.push({ id, ts: Date.now() });
+  _saveTombs(EVENT_TOMB_LS_KEY, arr);
+}
+function _getTombSet(lsKey) {
+  return new Set(_loadTombs(lsKey).map(t => t.id));
+}
+
 // Após merge, remove duplicatas de prioridades por id mantendo o item no bucket que
 // bate com seu finishDate. Resolve o caso de "arrastei e o item duplicou após merge".
 function cleanupPriorityDuplicates(priorities) {
@@ -2747,9 +2778,32 @@ async function flushWrite(key) {
     // 2) Merge com a versão local (palliativo: itens novos de ambos preservados)
     if (remoteValue !== null && remoteValue !== undefined) {
       value = deepMergeForSave(value, remoteValue);
-      // Limpa duplicatas que aparecem em buckets diferentes (ex: drag-and-drop)
-      if (key === "priorities-v1") cleanupPriorityDuplicates(value);
-      else if (key === "calendar-events-v1") cleanupEventDuplicates(value);
+      // Aplica tombstones locais (itens explicitamente excluídos ganham contra o remoto)
+      if (key === "priorities-v1") {
+        const tombs = _getTombSet(PRIORITY_TOMB_LS_KEY);
+        if (tombs.size) {
+          for (const pid in value) {
+            const data = value[pid];
+            if (!data || typeof data !== "object") continue;
+            for (const dk in data) {
+              const list = data[dk];
+              if (!Array.isArray(list)) continue;
+              data[dk] = list.filter(item => !item || !item.id || !tombs.has(item.id));
+            }
+          }
+        }
+        cleanupPriorityDuplicates(value);
+      } else if (key === "calendar-events-v1") {
+        const tombs = _getTombSet(EVENT_TOMB_LS_KEY);
+        if (tombs.size) {
+          for (const dk in value) {
+            const list = value[dk];
+            if (!Array.isArray(list)) continue;
+            value[dk] = list.filter(ev => !ev || !ev.id || !tombs.has(ev.id));
+          }
+        }
+        cleanupEventDuplicates(value);
+      }
       CACHE[key] = value;
     }
     // 3) Grava
@@ -3978,11 +4032,13 @@ function deleteEvent() {
         if (found) {
           archivePriority(found.personId, found.list[found.idx], "Tarefa excluída no calendário", found.dayKey);
           found.list.splice(found.idx, 1);
+          addPriorityTombstone(pid);
         }
       });
       savePriorities();
     }
   }
+  addEventTombstone(editingId);
   events[activeDayKey] = list.filter(e => e.id !== editingId);
   if (!events[activeDayKey].length) delete events[activeDayKey];
   saveEvents();
@@ -5505,6 +5561,7 @@ function buildPriorityItem(item, sourceList, personId, dayKey, opts) {
       archivePriority(personId, item, "Excluída manualmente", dayKey);
       sourceList.splice(i, 1);
     }
+    addPriorityTombstone(item.id);
     savePriorities();
     renderPriorities();
   };
@@ -7233,7 +7290,10 @@ document.getElementById("clearDonePriorityBtn").onclick = () => {
   if (!confirm(`Remover ${doneCount} prioridade(s) marcada(s) como feita(s) em todos os dias?`)) return;
   DAYS.forEach(d => {
     const rem = (personData[d.key] || []).filter(i => i.done);
-    rem.forEach(it => archivePriority(activePerson, it, "Limpar feitas", d.key));
+    rem.forEach(it => {
+      archivePriority(activePerson, it, "Limpar feitas", d.key);
+      addPriorityTombstone(it.id);
+    });
     personData[d.key] = (personData[d.key] || []).filter(i => !i.done);
   });
   savePriorities();
