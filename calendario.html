@@ -2639,6 +2639,64 @@ function storageSet(key, value) {
   PENDING[key] = setTimeout(() => flushWrite(key), 400);
 }
 
+// Após merge, remove duplicatas de prioridades por id mantendo o item no bucket que
+// bate com seu finishDate. Resolve o caso de "arrastei e o item duplicou após merge".
+function cleanupPriorityDuplicates(priorities) {
+  for (const personId in priorities) {
+    const data = priorities[personId];
+    if (!data || typeof data !== "object") continue;
+    const seen = new Map();
+    for (const dk in data) {
+      const list = data[dk];
+      if (!Array.isArray(list)) continue;
+      for (const item of list) {
+        if (!item || !item.id) continue;
+        if (!seen.has(item.id)) seen.set(item.id, []);
+        seen.get(item.id).push({ dk, item });
+      }
+    }
+    for (const occurrences of seen.values()) {
+      if (occurrences.length <= 1) continue;
+      const valid = occurrences.find(o => {
+        if (!o.item.finishDate) return false;
+        return dayKeyFromDateStr(o.item.finishDate) === o.dk;
+      });
+      const keep = valid || occurrences[0];
+      for (const o of occurrences) {
+        if (o === keep) continue;
+        const list = data[o.dk];
+        const idx = list.indexOf(o.item);
+        if (idx >= 0) list.splice(idx, 1);
+      }
+    }
+  }
+}
+
+// Mesmo conceito para tarefas do calendário (bucket = string yyyy-mm-dd = finishDate)
+function cleanupEventDuplicates(events) {
+  const seen = new Map();
+  for (const dk in events) {
+    const list = events[dk];
+    if (!Array.isArray(list)) continue;
+    for (const ev of list) {
+      if (!ev || !ev.id) continue;
+      if (!seen.has(ev.id)) seen.set(ev.id, []);
+      seen.get(ev.id).push({ dk, ev });
+    }
+  }
+  for (const occurrences of seen.values()) {
+    if (occurrences.length <= 1) continue;
+    const valid = occurrences.find(o => (o.ev.finishDate || o.dk) === o.dk);
+    const keep = valid || occurrences[0];
+    for (const o of occurrences) {
+      if (o === keep) continue;
+      const list = events[o.dk];
+      const idx = list.indexOf(o.ev);
+      if (idx >= 0) list.splice(idx, 1);
+    }
+  }
+}
+
 // Merge palliativo: une coleções locais com remotas pra evitar overwrite entre usuários
 function mergeArraysById(local, remote) {
   if (local.length === 0) return remote.slice();
@@ -2689,6 +2747,9 @@ async function flushWrite(key) {
     // 2) Merge com a versão local (palliativo: itens novos de ambos preservados)
     if (remoteValue !== null && remoteValue !== undefined) {
       value = deepMergeForSave(value, remoteValue);
+      // Limpa duplicatas que aparecem em buckets diferentes (ex: drag-and-drop)
+      if (key === "priorities-v1") cleanupPriorityDuplicates(value);
+      else if (key === "calendar-events-v1") cleanupEventDuplicates(value);
       CACHE[key] = value;
     }
     // 3) Grava
